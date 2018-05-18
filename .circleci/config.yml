@@ -92,6 +92,20 @@ jobs:
             set -ex
             export PATH="$GOBIN:$PATH"
             make metalinter
+  
+  test_vagrant:
+    <<: *defaults
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - restore_cache:
+          key: v1-pkg-cache
+      - restore_cache:
+          key: v1-tree-{{ .Environment.CIRCLE_SHA1 }}
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends bsdmainutils virtualbox vagrant
+      - run:
+          name: Test Vagrantfile
+          command: make vagrant_test
 
   test_apps:
     <<: *defaults
