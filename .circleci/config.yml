@@ -193,8 +193,10 @@ workflows:
   version: 2
   test-suite:
     jobs:
-      - test_vagrant
       - setup_dependencies
+      - test_vagrant:
+          requires:
+            - setup_dependencies
       - setup_abci:
           requires:
             - setup_dependencies
