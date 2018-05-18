@@ -108,16 +108,16 @@ test_p2p:
 need_abci:
 	bash scripts/install_abci_apps.sh
 
+#	make build_docker_test_image
+#	make test_persistence
+#	make test_p2p
 test_integrations:
-	make build_docker_test_image
 	make get_tools
 	make get_vendor_deps
 	make install
 	make need_abci
 	make test_cover
 	make test_apps
-	make test_persistence
-	make test_p2p
 
 test_release:
 	@go test -tags release $(PACKAGES)
