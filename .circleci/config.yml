@@ -102,7 +102,7 @@ jobs:
           key: v1-pkg-cache
       - restore_cache:
           key: v1-tree-{{ .Environment.CIRCLE_SHA1 }}
-      - run: sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get install -y --no-install-recommends virtualbox bsdmainutils vagrant
+      - run: sudo apt-get update && sudo apt-add-repository "deb http://download.virtualbox.org/virtualbox/debian $(lsb_release -sc) contrib" && wget -q https://www.virtualbox.org/download/oracle_vbox.asc -O- | sudo apt-key add - && sudo apt-get update && sudo apt-get install -y --no-install-recommends virtualbox-5.0 bsdmainutils vagrant
       - run:
           name: Test Vagrantfile
           command: make vagrant_test
