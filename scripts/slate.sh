@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+#CIRCLE_BRANCH=develop
+
 if [ "$CIRCLE_BRANCH" == "" ]; then
 	echo "this script is meant to be run on CircleCI, exiting"
-	echo 1
+	exit 1
 fi
 
 # check for changes in the `rpc/core` directory
