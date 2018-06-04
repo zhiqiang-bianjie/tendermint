@@ -91,7 +91,7 @@ jobs:
           command: |
             set -ex
             export PATH="$GOBIN:$PATH"
-            make build-slate
+            bash scripts/slate.sh
 
   lint:
     <<: *defaults
@@ -199,6 +199,9 @@ workflows:
   test-suite:
     jobs:
       - setup_dependencies
+      - build_slate:
+          requires:
+            - setup_dependencies
       - setup_abci:
           requires:
             - setup_dependencies
