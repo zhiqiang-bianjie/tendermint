@@ -62,6 +62,10 @@ func LoadState(db dbm.DB) State {
 	return loadState(db, stateKey)
 }
 
+func LoadPreState(db dbm.DB) State {
+	return loadState(db, statePreKey)
+}
+
 func loadState(db dbm.DB, key []byte) (state State) {
 	buf := db.Get(key)
 	if len(buf) == 0 {
@@ -82,6 +86,10 @@ func loadState(db dbm.DB, key []byte) (state State) {
 // SaveState persists the State, the ValidatorsInfo, and the ConsensusParamsInfo to the database.
 func SaveState(db dbm.DB, state State) {
 	saveState(db, state, stateKey)
+}
+
+func SavePreState(db dbm.DB, state State) {
+	saveState(db, state, statePreKey)
 }
 
 func saveState(db dbm.DB, state State, key []byte) {

@@ -12,6 +12,7 @@ import (
 // database keys
 var (
 	stateKey = []byte("stateKey")
+	statePreKey = []byte("statePreKey")
 )
 
 //-----------------------------------------------------------------------------
