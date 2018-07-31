@@ -1,5 +1,66 @@
 # Changelog
 
+## 0.22.6
+
+*July 24th, 2018*
+
+BUG FIXES
+
+- [rpc] Fix `/blockchain` endpoint
+    - (#2049) Fix OOM attack by returning error on negative input
+    - Fix result length to have max 20 (instead of 21) block metas
+- [rpc] Validate height is non-negative in `/abci_query`
+- [consensus] (#2050) Include evidence in proposal block parts (previously evidence was
+  not being included in blocks!)
+- [p2p] (#2046) Close rejected inbound connections so file descriptor doesn't
+  leak
+- [Gopkg] (#2053) Fix versions in the toml
+
+## 0.22.5
+
+*July 23th, 2018*
+
+BREAKING CHANGES:
+- [crypto] Refactor `tendermint/crypto` into many subpackages
+- [libs/common] remove exponentially distributed random numbers
+
+IMPROVEMENTS:
+- [abci, libs/common] Generated gogoproto static marshaller methods
+- [config] Increase default send/recv rates to 5 mB/s
+- [p2p] allow persistent peers to be private
+
+BUG FIXES
+- [mempool] fixed a race condition when `create_empty_blocks=false` where a
+  transaction is published at an old height.
+- [p2p] dial external IP setup by `persistent_peers`, not internal NAT IP
+- [rpc] make `/status` RPC endpoint resistant to consensus halt
+
+## 0.22.4
+
+*July 14th, 2018*
+
+BREAKING CHANGES:
+- [genesis] removed deprecated `app_options` field.
+- [types] Genesis.AppStateJSON -> Genesis.AppState
+
+FEATURES:
+- [tools] Merged in from github.com/tendermint/tools
+
+BUG FIXES:
+- [tools/tm-bench] Various fixes
+- [consensus] Wait for WAL to stop on shutdown
+- [abci] Fix #1891, pending requests cannot hang when abci server dies.
+  Previously a crash in BeginBlock could leave tendermint in broken state.
+
+## 0.22.3
+
+*July 10th, 2018*
+
+IMPROVEMENTS
+- Update dependencies
+    * pin all values in Gopkg.toml to version or commit
+    * update golang/protobuf to v1.1.0
+
 ## 0.22.2
 
 *July 10th, 2018*
@@ -31,6 +92,7 @@ BUG FIXES
 * [state] Return error when EndBlock returns a 0-power validator that isn't
   already in the validator set.
 * [consensus] Shut down WAL properly.
+
 
 ## 0.22.0
 

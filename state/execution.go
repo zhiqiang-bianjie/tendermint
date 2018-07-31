@@ -87,7 +87,7 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 
 	// update the state with the block and responses
 	preState := state.Copy()
-	state, err = updateState(state, blockID, block.Header, abciResponses)
+	state, err = updateState(state, blockID, &block.Header, abciResponses)
 	if err != nil {
 		return state, fmt.Errorf("Commit failed for application: %v", err)
 	}
@@ -191,7 +191,7 @@ func execBlockOnProxyApp(logger log.Logger, proxyAppConn proxy.AppConnConsensus,
 	// Begin block
 	_, err := proxyAppConn.BeginBlockSync(abci.RequestBeginBlock{
 		Hash:                block.Hash(),
-		Header:              types.TM2PB.Header(block.Header),
+		Header:              types.TM2PB.Header(&block.Header),
 		Validators:          signVals,
 		ByzantineValidators: byzVals,
 	})

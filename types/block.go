@@ -17,33 +17,29 @@ import (
 // TODO: add Version byte
 type Block struct {
 	mtx        sync.Mutex
-	*Header    `json:"header"`
-	*Data      `json:"data"`
+	Header     `json:"header"`
+	Data       `json:"data"`
 	Evidence   EvidenceData `json:"evidence"`
 	LastCommit *Commit      `json:"last_commit"`
 }
 
 // MakeBlock returns a new block with an empty header, except what can be computed from itself.
 // It populates the same set of fields validated by ValidateBasic
-func MakeBlock(height int64, txs []Tx, commit *Commit) *Block {
+func MakeBlock(height int64, txs []Tx, commit *Commit, evidence []Evidence) *Block {
 	block := &Block{
-		Header: &Header{
+		Header: Header{
 			Height: height,
 			Time:   time.Now(),
 			NumTxs: int64(len(txs)),
 		},
-		LastCommit: commit,
-		Data: &Data{
+		Data: Data{
 			Txs: txs,
 		},
+		Evidence:   EvidenceData{Evidence: evidence},
+		LastCommit: commit,
 	}
 	block.fillHeader()
 	return block
-}
-
-// AddEvidence appends the given evidence to the block
-func (b *Block) AddEvidence(evidence []Evidence) {
-	b.Evidence.Evidence = append(b.Evidence.Evidence, evidence...)
 }
 
 // ValidateBasic performs basic validation that doesn't involve state data.
@@ -98,7 +94,7 @@ func (b *Block) Hash() cmn.HexBytes {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
 
-	if b == nil || b.Header == nil || b.Data == nil || b.LastCommit == nil {
+	if b == nil || b.LastCommit == nil {
 		return nil
 	}
 	b.fillHeader()
@@ -107,6 +103,7 @@ func (b *Block) Hash() cmn.HexBytes {
 
 // MakePartSet returns a PartSet containing parts of a serialized block.
 // This is the form in which the block is gossipped to peers.
+// CONTRACT: partSize is greater than zero.
 func (b *Block) MakePartSet(partSize int) *PartSet {
 	if b == nil {
 		return nil
@@ -208,7 +205,7 @@ type Header struct {
 // Hash returns the hash of the header.
 // Returns nil if ValidatorHash is missing,
 // since a Header is not valid unless there is
-// a ValidaotrsHash (corresponding to the validator set).
+// a ValidatorsHash (corresponding to the validator set).
 func (h *Header) Hash() cmn.HexBytes {
 	if h == nil || len(h.ValidatorsHash) == 0 {
 		return nil
@@ -392,6 +389,9 @@ func (commit *Commit) ValidateBasic() error {
 
 // Hash returns the hash of the commit
 func (commit *Commit) Hash() cmn.HexBytes {
+	if commit == nil {
+		return nil
+	}
 	if commit.hash == nil {
 		bs := make([]merkle.Hasher, len(commit.Precommits))
 		for i, precommit := range commit.Precommits {
