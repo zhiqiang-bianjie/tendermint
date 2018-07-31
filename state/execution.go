@@ -86,7 +86,9 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 	fail.Fail() // XXX
 
 	// update the state with the block and responses
+	////////////////////  iris/tendermint begin  ///////////////////////////
 	preState := state.Copy()
+	////////////////////  iris/tendermint end  ///////////////////////////
 	state, err = updateState(state, blockID, &block.Header, abciResponses)
 	if err != nil {
 		return state, fmt.Errorf("Commit failed for application: %v", err)
@@ -106,7 +108,9 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 	// update the app hash and save the state
 	state.AppHash = appHash
 	SaveState(blockExec.db, state)
+	////////////////////  iris/tendermint begin  ///////////////////////////
 	SavePreState(blockExec.db, preState)
+	////////////////////  iris/tendermint end  ///////////////////////////
 
 	fail.Fail() // XXX
 
