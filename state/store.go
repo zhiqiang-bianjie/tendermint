@@ -100,7 +100,9 @@ func saveState(db dbm.DB, state State, key []byte) {
 	nextHeight := state.LastBlockHeight + 1
 	saveValidatorsInfo(db, nextHeight, state.LastHeightValidatorsChanged, state.Validators)
 	saveConsensusParamsInfo(db, nextHeight, state.LastHeightConsensusParamsChanged, state.ConsensusParams)
-	db.SetSync(stateKey, state.Bytes())
+	////////////////////  iris/tendermint begin  ///////////////////////////
+	db.SetSync(key, state.Bytes())
+	////////////////////  iris/tendermint end  ///////////////////////////
 }
 
 //------------------------------------------------------------------------
