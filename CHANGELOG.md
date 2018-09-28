@@ -1,8 +1,14 @@
 # Changelog
 
+## 0.23.1-rc0-iris1
+
+*September 28th, 2018*
+
+- Support replay the last block and overwrite the state data and application data on the last height
+
 ## 0.23.1
 
-*August 22nd, 2018*
+*August 22th, 2018*
 
 BUG FIXES:
 - [libs/autofile] \#2261 Fix log rotation so it actually happens.
