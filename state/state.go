@@ -13,6 +13,9 @@ import (
 // database keys
 var (
 	stateKey = []byte("stateKey")
+	////////////////////  iris/tendermint begin  ///////////////////////////
+	statePreKey = []byte("statePreKey")
+	////////////////////  iris/tendermint end  ///////////////////////////
 )
 
 //-----------------------------------------------------------------------------

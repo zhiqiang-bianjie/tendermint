@@ -62,6 +62,12 @@ func LoadState(db dbm.DB) State {
 	return loadState(db, stateKey)
 }
 
+////////////////////  iris/tendermint begin  ///////////////////////////
+func LoadPreState(db dbm.DB) State {
+	return loadState(db, statePreKey)
+}
+////////////////////  iris/tendermint end  ///////////////////////////
+
 func loadState(db dbm.DB, key []byte) (state State) {
 	buf := db.Get(key)
 	if len(buf) == 0 {
@@ -85,6 +91,12 @@ func SaveState(db dbm.DB, state State) {
 	saveState(db, state, stateKey)
 }
 
+////////////////////  iris/tendermint begin  ///////////////////////////
+func SavePreState(db dbm.DB, state State) {
+	saveState(db, state, statePreKey)
+}
+////////////////////  iris/tendermint end  ///////////////////////////
+
 func saveState(db dbm.DB, state State, key []byte) {
 	nextHeight := state.LastBlockHeight + 1
 	// If first block, save validators for block 1.
@@ -96,7 +108,9 @@ func saveState(db dbm.DB, state State, key []byte) {
 	saveValidatorsInfo(db, nextHeight+1, state.LastHeightValidatorsChanged, state.NextValidators)
 	// Save next consensus params.
 	saveConsensusParamsInfo(db, nextHeight, state.LastHeightConsensusParamsChanged, state.ConsensusParams)
-	db.SetSync(stateKey, state.Bytes())
+	////////////////////  iris/tendermint begin  ///////////////////////////
+	db.SetSync(key, state.Bytes())
+	////////////////////  iris/tendermint end  ///////////////////////////
 }
 
 //------------------------------------------------------------------------
