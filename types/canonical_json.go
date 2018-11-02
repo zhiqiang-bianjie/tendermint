@@ -84,10 +84,15 @@ func CanonicalProposal(chainID string, proposal *Proposal) CanonicalJSONProposal
 }
 
 func CanonicalVote(chainID string, vote *Vote) CanonicalJSONVote {
+	blockID := vote.BlockID
+	if len(blockID.Hash) == 0 {
+		blockID.Hash = nil
+		blockID.PartsHeader.Hash = nil
+	}
 	return CanonicalJSONVote{
 		ChainID:   chainID,
 		Type:      "vote",
-		BlockID:   CanonicalBlockID(vote.BlockID),
+		BlockID:   CanonicalBlockID(blockID),
 		Height:    vote.Height,
 		Round:     vote.Round,
 		Timestamp: CanonicalTime(vote.Timestamp),
