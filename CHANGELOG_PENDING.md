@@ -1,8 +1,14 @@
 # Pending
 
+## v0.26.1
+
+*TBA*
+
 Special thanks to external contributors on this release:
 
-BREAKING CHANGES:
+Friendly reminder, we have a [bug bounty program](https://hackerone.com/tendermint).
+
+### BREAKING CHANGES:
 
 * CLI/RPC/Config
 
@@ -10,8 +16,16 @@ BREAKING CHANGES:
 
 * Go API
 
-FEATURES:
+* Blockchain Protocol
 
-IMPROVEMENTS:
+* P2P Protocol
 
-BUG FIXES:
+### FEATURES:
+
+### IMPROVEMENTS:
+
+### BUG FIXES:
+
+- [crypto/merkle] [\#2756](https://github.com/tendermint/tendermint/issues/2756) Fix crypto/merkle ProofOperators.Verify to check bounds on keypath parts.
+- [mempool] fix a bug where we create a WAL despite `wal_dir` being empty
+- [p2p] \#2771 Fix `peer-id` label name in prometheus metrics

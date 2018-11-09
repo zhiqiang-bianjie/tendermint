@@ -8,6 +8,7 @@ import (
 
 	"github.com/tendermint/tendermint/types"
 	tmtime "github.com/tendermint/tendermint/types/time"
+	"github.com/tendermint/tendermint/version"
 )
 
 // database keys
@@ -20,6 +21,29 @@ var (
 
 //-----------------------------------------------------------------------------
 
+// Version is for versioning the State.
+// It holds the Block and App version needed for making blocks,
+// and the software version to support upgrades to the format of
+// the State as stored on disk.
+type Version struct {
+	Consensus version.Consensus
+	Software  string
+}
+
+// initStateVersion sets the Consensus.Block and Software versions,
+// but leaves the Consensus.App version blank.
+// The Consensus.App version will be set during the Handshake, once
+// we hear from the app what protocol version it is running.
+var initStateVersion = Version{
+	Consensus: version.Consensus{
+		Block: version.BlockProtocol,
+		App:   0,
+	},
+	Software: version.TMCoreSemVer,
+}
+
+//-----------------------------------------------------------------------------
+
 // State is a short description of the latest committed block of the Tendermint consensus.
 // It keeps all information necessary to validate new blocks,
 // including the last validator set and the consensus params.
@@ -28,6 +52,8 @@ var (
 // Instead, use state.Copy() or state.NextState(...).
 // NOTE: not goroutine-safe.
 type State struct {
+	Version Version
+
 	// immutable
 	ChainID string
 
@@ -62,6 +88,7 @@ type State struct {
 // Copy makes a copy of the State for mutating.
 func (state State) Copy() State {
 	return State{
+		Version: state.Version,
 		ChainID: state.ChainID,
 
 		LastBlockHeight:  state.LastBlockHeight,
@@ -104,7 +131,7 @@ func (state State) IsEmpty() bool {
 
 // MakeBlock builds a block from the current state with the given txs, commit,
 // and evidence. Note it also takes a proposerAddress because the state does not
-// track rounds, and hence doesn't know the correct proposer. TODO: alleviate this!
+// track rounds, and hence does not know the correct proposer. TODO: fix this!
 func (state State) MakeBlock(
 	height int64,
 	txs []types.Tx,
@@ -116,31 +143,22 @@ func (state State) MakeBlock(
 	// Build base block with block data.
 	block := types.MakeBlock(height, txs, commit, evidence)
 
-	// Fill rest of header with state data.
-	block.ChainID = state.ChainID
-
-	// Set time
+	// Set time.
+	var timestamp time.Time
 	if height == 1 {
-		block.Time = tmtime.Now()
-		if block.Time.Before(state.LastBlockTime) {
-			block.Time = state.LastBlockTime // state.LastBlockTime for height == 1 is genesis time
-		}
+		timestamp = state.LastBlockTime // genesis time
 	} else {
-		block.Time = MedianTime(commit, state.LastValidators)
+		timestamp = MedianTime(commit, state.LastValidators)
 	}
 
-	block.LastBlockID = state.LastBlockID
-	block.TotalTxs = state.LastBlockTotalTx + block.NumTxs
-
-	block.ValidatorsHash = state.Validators.Hash()
-	block.NextValidatorsHash = state.NextValidators.Hash()
-	block.ConsensusHash = state.ConsensusParams.Hash()
-	block.AppHash = state.AppHash
-	block.LastResultsHash = state.LastResultsHash
-
-	// NOTE: we can't use the state.Validators because we don't
-	// IncrementAccum for rounds there.
-	block.ProposerAddress = proposerAddress
+	// Fill rest of header with state data.
+	block.Header.Populate(
+		state.Version.Consensus, state.ChainID,
+		timestamp, state.LastBlockID, state.LastBlockTotalTx+block.NumTxs,
+		state.Validators.Hash(), state.NextValidators.Hash(),
+		state.ConsensusParams.Hash(), state.AppHash, state.LastResultsHash,
+		proposerAddress,
+	)
 
 	return block, block.MakePartSet(types.BlockPartSizeBytes)
 }
@@ -200,7 +218,6 @@ func MakeGenesisState(genDoc *types.GenesisDoc) (State, error) {
 		return State{}, fmt.Errorf("Error in genesis file: %v", err)
 	}
 
-	// Make validators slice
 	var validatorSet, nextValidatorSet *types.ValidatorSet
 	if genDoc.Validators == nil {
 		validatorSet = types.NewValidatorSet(nil)
@@ -208,22 +225,14 @@ func MakeGenesisState(genDoc *types.GenesisDoc) (State, error) {
 	} else {
 		validators := make([]*types.Validator, len(genDoc.Validators))
 		for i, val := range genDoc.Validators {
-			pubKey := val.PubKey
-			address := pubKey.Address()
-
-			// Make validator
-			validators[i] = &types.Validator{
-				Address:     address,
-				PubKey:      pubKey,
-				VotingPower: val.Power,
-			}
+			validators[i] = types.NewValidator(val.PubKey, val.Power)
 		}
 		validatorSet = types.NewValidatorSet(validators)
 		nextValidatorSet = types.NewValidatorSet(validators).CopyIncrementAccum(1)
 	}
 
 	return State{
-
+		Version: initStateVersion,
 		ChainID: genDoc.ChainID,
 
 		LastBlockHeight: 0,
