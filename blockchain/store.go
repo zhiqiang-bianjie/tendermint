@@ -186,6 +186,7 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 	bs.db.SetSync(nil, nil)
 }
 
+////////////////////  iris/tendermint begin  ///////////////////////////
 func (bs *BlockStore) RetreatLastBlock() {
 	height := bs.height
 
@@ -202,6 +203,7 @@ func (bs *BlockStore) RetreatLastBlock() {
 	// Flush
 	bs.db.SetSync(nil, nil)
 }
+////////////////////  iris/tendermint end  ///////////////////////////
 
 func (bs *BlockStore) saveBlockPart(height int64, index int, part *types.Part) {
 	if height != bs.Height()+1 {
