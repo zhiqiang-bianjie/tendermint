@@ -102,6 +102,11 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 
 	fail.Fail() // XXX
 
+	// update the state with the block and responses
+	////////////////////  iris/tendermint begin  ///////////////////////////
+	preState := state.Copy()
+	////////////////////  iris/tendermint end  ///////////////////////////
+
 	// Save the results before we commit.
 	saveABCIResponses(blockExec.db, block.Height, abciResponses)
 
@@ -127,6 +132,10 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 	// Update the app hash and save the state.
 	state.AppHash = appHash
 	SaveState(blockExec.db, state)
+
+	////////////////////  iris/tendermint begin  ///////////////////////////
+	SavePreState(blockExec.db, preState)
+	////////////////////  iris/tendermint end  ///////////////////////////
 
 	fail.Fail() // XXX
 
