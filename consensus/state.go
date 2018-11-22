@@ -123,6 +123,8 @@ type ConsensusState struct {
 
 	// for reporting metrics
 	metrics *Metrics
+
+	Deprecated bool
 }
 
 // StateOption sets an optional parameter on the ConsensusState.
@@ -158,7 +160,7 @@ func NewConsensusState(
 	cs.decideProposal = cs.defaultDecideProposal
 	cs.doPrevote = cs.defaultDoPrevote
 	cs.setProposal = cs.defaultSetProposal
-
+	cs.Deprecated = state.Deprecated
 	cs.updateToState(state)
 
 	// Don't call scheduleRound0 yet.

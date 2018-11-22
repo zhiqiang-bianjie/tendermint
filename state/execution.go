@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
@@ -13,6 +14,10 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+const (
+	TerminateTagKey		= "terminate_blockchain"
+	TerminateTagValue	= "true"
+)
 //-----------------------------------------------------------------------------
 // BlockExecutor handles block execution and state updates.
 // It exposes ApplyBlock(), which validates & executes the block, updates state w/ ABCI responses,
@@ -115,6 +120,13 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 	if err != nil {
 		return state, fmt.Errorf("Commit failed for application: %v", err)
 	}
+	length := len(abciResponses.EndBlock.Tags)
+	if length > 0 {
+		tag := abciResponses.EndBlock.Tags[length-1]
+		if bytes.Equal(tag.Key, []byte(TerminateTagKey)) && bytes.Equal(tag.Value, []byte(TerminateTagValue)) {
+			state.Deprecated = true
+		}
+	}
 
 	// Lock mempool, commit app state, update mempoool.
 	appHash, err := blockExec.Commit(state, block)
@@ -139,7 +151,9 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 	// Events are fired after everything else.
 	// NOTE: if we crash between Commit and Save, events wont be fired during replay
 	fireEvents(blockExec.logger, blockExec.eventBus, block, abciResponses)
-
+	if state.Deprecated {
+		return state, fmt.Errorf("program received termination signal from ABCI app, restart your node and it will enter query mode, which means p2p gossip and consensus engine will be shutdown")
+	}
 	return state, nil
 }
 
