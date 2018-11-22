@@ -152,7 +152,7 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 	// NOTE: if we crash between Commit and Save, events wont be fired during replay
 	fireEvents(blockExec.logger, blockExec.eventBus, block, abciResponses)
 	if state.Deprecated {
-		return state, fmt.Errorf("program received termination signal from ABCI app, restart your node and it will enter query mode, which means p2p gossip and consensus engine will be shutdown")
+		return state, fmt.Errorf("program received termination signal from ABCI app, restart your node and it will enter query-only mode")
 	}
 	return state, nil
 }
