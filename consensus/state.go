@@ -27,6 +27,7 @@ import (
 
 const (
 	proposalHeartbeatIntervalSeconds = 2
+	deprecatedToShutdownInterval = 30
 )
 
 //-----------------------------------------------------------------------------
@@ -546,6 +547,7 @@ func (cs *ConsensusState) updateToState(state sm.State) {
 	cs.LastValidators = state.LastValidators
 
 	cs.state = state
+	cs.Deprecated = state.Deprecated
 
 	// Finally, broadcast RoundState
 	cs.newStep()
@@ -599,6 +601,11 @@ func (cs *ConsensusState) receiveRoutine(maxSteps int) {
 	}()
 
 	for {
+		if cs.Deprecated {
+			cs.Logger.Info(fmt.Sprintf("this blockchain has been deprecated. %d seconds later, this node will be shutdown", deprecatedToShutdownInterval))
+			time.Sleep(deprecatedToShutdownInterval * time.Second)
+			cmn.Exit("Shutdown this blockchain node")
+		}
 		if maxSteps > 0 {
 			if cs.nSteps >= maxSteps {
 				cs.Logger.Info("reached max steps. exiting receive routine")
