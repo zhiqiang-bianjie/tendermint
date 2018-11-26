@@ -123,9 +123,8 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 		return state, fmt.Errorf("Commit failed for application: %v", err)
 	}
 
-	length := len(abciResponses.EndBlock.Tags)
-	if length > 0 {
-		tag := abciResponses.EndBlock.Tags[length-1]
+	if len(abciResponses.EndBlock.Tags) > 0 {
+		tag := abciResponses.EndBlock.Tags[0]
 		if bytes.Equal(tag.Key, []byte(TerminateTagKey)) && bytes.Equal(tag.Value, []byte(TerminateTagValue)) {
 			state.Deprecated = true
 		}

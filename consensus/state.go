@@ -161,6 +161,7 @@ func NewConsensusState(
 	cs.decideProposal = cs.defaultDecideProposal
 	cs.doPrevote = cs.defaultDoPrevote
 	cs.setProposal = cs.defaultSetProposal
+
 	cs.Deprecated = state.Deprecated
 	cs.updateToState(state)
 
