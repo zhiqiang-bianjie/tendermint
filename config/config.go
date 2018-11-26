@@ -136,6 +136,11 @@ type BaseConfig struct {
 	// and verifying their commits
 	FastSync bool `mapstructure:"fast_sync"`
 
+	// If the blockchain is deprecated, run node with Deprecated will
+	// work in query only mode. Consensus engine and p2p gossip will be
+	// shutdown
+	Deprecated bool `mapstructure:"deprecated"`
+
 	// Database backend: leveldb | memdb | cleveldb
 	DBBackend string `mapstructure:"db_backend"`
 
@@ -181,6 +186,7 @@ func DefaultBaseConfig() BaseConfig {
 		LogLevel:          DefaultPackageLogLevels(),
 		ProfListenAddress: "",
 		FastSync:          true,
+		Deprecated:        false,
 		FilterPeers:       false,
 		DBBackend:         "leveldb",
 		DBPath:            "data",

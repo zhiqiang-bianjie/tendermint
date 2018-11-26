@@ -142,7 +142,6 @@ increasing attention to backwards compatibility. Thanks for bearing with us!
 - [p2p] [\#2668](https://github.com/tendermint/tendermint/issues/2668) Reconnect to originally dialed address (not self-reported address) for persistent peers
 - [p2p] [\#2797](https://github.com/tendermint/tendermint/pull/2797) AddressBook requires addresses to have IDs; Do not crap out immediately after sending pex addrs in seed mode
 
-
 ## v0.25.0
 
 *September 22, 2018*
@@ -307,8 +306,8 @@ BUG FIXES:
 *August 22nd, 2018*
 
 BUG FIXES:
-- [libs/autofile] \#2261 Fix log rotation so it actually happens.
-    - Fixes issues with consensus WAL growing unbounded ala \#2259
+- [libs/autofile] [\#2261](https://github.com/tendermint/tendermint/issues/2261) Fix log rotation so it actually happens.
+    - Fixes issues with consensus WAL growing unbounded ala [\#2259](https://github.com/tendermint/tendermint/issues/2259)
 
 ## 0.23.0
 

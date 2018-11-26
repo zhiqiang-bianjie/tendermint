@@ -545,6 +545,11 @@ func (n *Node) OnStart() error {
 		n.prometheusSrv = n.startPrometheusServer(n.config.Instrumentation.PrometheusListenAddr)
 	}
 
+	if n.consensusState.Deprecated || n.config.Deprecated {
+		n.Logger.Info("This blockchain has been terminated. The consensus engine and p2p gossip have been disabled. Only query rpc interfaces are available")
+		return nil
+	}
+
 	// Start the transport.
 	addr, err := p2p.NewNetAddressStringWithOptionalID(n.config.P2P.ListenAddress)
 	if err != nil {
