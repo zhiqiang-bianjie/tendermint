@@ -189,17 +189,14 @@ func (bs *BlockStore) SaveBlock(block *types.Block, blockParts *types.PartSet, s
 ////////////////////  iris/tendermint begin  ///////////////////////////
 func (bs *BlockStore) RetreatLastBlock() {
 	height := bs.height
-
 	bs.db.Delete(calcBlockMetaKey(height))
 	bs.db.Delete(calcBlockCommitKey(height-1))
 	bs.db.Delete(calcSeenCommitKey(height))
 	BlockStoreStateJSON{Height: height-1 }.Save(bs.db)
-
 	// Done!
 	bs.mtx.Lock()
 	bs.height = height
 	bs.mtx.Unlock()
-
 	// Flush
 	bs.db.SetSync(nil, nil)
 }

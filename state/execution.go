@@ -107,19 +107,22 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 
 	fail.Fail() // XXX
 
+	// update the state with the block and responses
+	////////////////////  iris/tendermint begin  ///////////////////////////
+	preState := state.Copy()
+	////////////////////  iris/tendermint end  ///////////////////////////
+
 	// Save the results before we commit.
 	saveABCIResponses(blockExec.db, block.Height, abciResponses)
 
 	fail.Fail() // XXX
 
-	// update the state with the block and responses
-	////////////////////  iris/tendermint begin  ///////////////////////////
-	preState := state.Copy()
-	////////////////////  iris/tendermint end  ///////////////////////////
+	// Update the state with the block and responses.
 	state, err = updateState(state, blockID, &block.Header, abciResponses)
 	if err != nil {
 		return state, fmt.Errorf("Commit failed for application: %v", err)
 	}
+
 	length := len(abciResponses.EndBlock.Tags)
 	if length > 0 {
 		tag := abciResponses.EndBlock.Tags[length-1]
@@ -142,6 +145,7 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 	// Update the app hash and save the state.
 	state.AppHash = appHash
 	SaveState(blockExec.db, state)
+
 	////////////////////  iris/tendermint begin  ///////////////////////////
 	SavePreState(blockExec.db, preState)
 	////////////////////  iris/tendermint end  ///////////////////////////
@@ -151,6 +155,7 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 	// Events are fired after everything else.
 	// NOTE: if we crash between Commit and Save, events wont be fired during replay
 	fireEvents(blockExec.logger, blockExec.eventBus, block, abciResponses)
+
 	return state, nil
 }
 
