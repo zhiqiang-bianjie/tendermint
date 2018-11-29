@@ -400,7 +400,7 @@ func (h *Handshaker) replayBlocks(state sm.State, proxyApp proxy.AppConns, appBl
 		}
 
 		if config.ReplayHeight > 0 && i > config.ReplayHeight {
-			cmn.Exit(fmt.Sprintf("Successfully replay to height %s", config.ReplayHeight))
+			cmn.Exit(fmt.Sprintf("Replay from height %d to height %d successfully", appBlockHeight, config.ReplayHeight))
 		}
 
 		h.nBlocks++
