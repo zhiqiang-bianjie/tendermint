@@ -141,6 +141,8 @@ type BaseConfig struct {
 	// shutdown
 	Deprecated bool `mapstructure:"deprecated"`
 
+	ReplayHeight int64 `mapstructure:"replay_height"`
+
 	// Database backend: leveldb | memdb | cleveldb
 	DBBackend string `mapstructure:"db_backend"`
 
@@ -187,6 +189,7 @@ func DefaultBaseConfig() BaseConfig {
 		ProfListenAddress: "",
 		FastSync:          true,
 		Deprecated:        false,
+		ReplayHeight:      -1,
 		FilterPeers:       false,
 		DBBackend:         "leveldb",
 		DBPath:            "data",
