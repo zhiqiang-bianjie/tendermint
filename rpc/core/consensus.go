@@ -27,7 +27,7 @@ import (
 // 	"result": {
 // 		"validators": [
 // 			{
-// 				"accum": "0",
+// 				"proposer_priority": "0",
 // 				"voting_power": "10",
 // 				"pub_key": {
 // 					"data": "68DFDA7E50F82946E7E8546BED37944A422CD1B831E70DF66BA3B8430593944D",
@@ -92,7 +92,7 @@ func Validators(heightPtr *int64) (*ctypes.ResultValidators, error) {
 //               "value": "SBctdhRBcXtBgdI/8a/alTsUhGXqGs9k5ylV1u5iKHg="
 //             },
 //             "voting_power": "10",
-//             "accum": "0"
+//             "proposer_priority": "0"
 //           }
 //         ],
 //         "proposer": {
@@ -102,7 +102,7 @@ func Validators(heightPtr *int64) (*ctypes.ResultValidators, error) {
 //             "value": "SBctdhRBcXtBgdI/8a/alTsUhGXqGs9k5ylV1u5iKHg="
 //           },
 //           "voting_power": "10",
-//           "accum": "0"
+//           "proposer_priority": "0"
 //         }
 //       },
 //       "proposal": null,
@@ -138,7 +138,7 @@ func Validators(heightPtr *int64) (*ctypes.ResultValidators, error) {
 //               "value": "SBctdhRBcXtBgdI/8a/alTsUhGXqGs9k5ylV1u5iKHg="
 //             },
 //             "voting_power": "10",
-//             "accum": "0"
+//             "proposer_priority": "0"
 //           }
 //         ],
 //         "proposer": {
@@ -148,7 +148,7 @@ func Validators(heightPtr *int64) (*ctypes.ResultValidators, error) {
 //             "value": "SBctdhRBcXtBgdI/8a/alTsUhGXqGs9k5ylV1u5iKHg="
 //           },
 //           "voting_power": "10",
-//           "accum": "0"
+//           "proposer_priority": "0"
 //         }
 //       }
 //     },
@@ -193,7 +193,10 @@ func DumpConsensusState() (*ctypes.ResultDumpConsensusState, error) {
 	peers := p2pPeers.Peers().List()
 	peerStates := make([]ctypes.PeerStateInfo, len(peers))
 	for i, peer := range peers {
-		peerState := peer.Get(types.PeerStateKey).(*cm.PeerState)
+		peerState, ok := peer.Get(types.PeerStateKey).(*cm.PeerState)
+		if !ok { // peer does not have a state yet
+			continue
+		}
 		peerStateJSON, err := peerState.ToJSON()
 		if err != nil {
 			return nil, err
