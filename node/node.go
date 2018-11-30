@@ -200,7 +200,7 @@ func NewNode(config *cfg.Config,
 	consensusLogger := logger.With("module", "consensus")
 	handshaker := cs.NewHandshaker(stateDB, state, blockStore, genDoc)
 	handshaker.SetLogger(consensusLogger)
-	if err := handshaker.Handshake(proxyApp); err != nil {
+	if err := handshaker.Handshake(proxyApp, &config.BaseConfig); err != nil {
 		return nil, fmt.Errorf("Error during handshake: %v", err)
 	}
 
