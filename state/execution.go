@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +14,10 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+const (
+	HaltTagKey		= "halt_blockchain"
+	HaltTagValue	= "true"
+)
 //-----------------------------------------------------------------------------
 // BlockExecutor handles block execution and state updates.
 // It exposes ApplyBlock(), which validates & executes the block, updates state w/ ABCI responses,
@@ -102,6 +107,11 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 
 	fail.Fail() // XXX
 
+	// update the state with the block and responses
+	////////////////////  iris/tendermint begin  ///////////////////////////
+	preState := state.Copy()
+	////////////////////  iris/tendermint end  ///////////////////////////
+
 	// Save the results before we commit.
 	saveABCIResponses(blockExec.db, block.Height, abciResponses)
 
@@ -127,6 +137,13 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 		return state, fmt.Errorf("Commit failed for application: %v", err)
 	}
 
+	if len(abciResponses.EndBlock.Tags) > 0 {
+		tag := abciResponses.EndBlock.Tags[0]
+		if bytes.Equal(tag.Key, []byte(HaltTagKey)) && bytes.Equal(tag.Value, []byte(HaltTagValue)) {
+			state.Deprecated = true
+		}
+	}
+
 	// Lock mempool, commit app state, update mempoool.
 	appHash, err := blockExec.Commit(state, block)
 	if err != nil {
@@ -141,6 +158,10 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 	// Update the app hash and save the state.
 	state.AppHash = appHash
 	SaveState(blockExec.db, state)
+
+	////////////////////  iris/tendermint begin  ///////////////////////////
+	SavePreState(blockExec.db, preState)
+	////////////////////  iris/tendermint end  ///////////////////////////
 
 	fail.Fail() // XXX
 
