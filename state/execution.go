@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	TerminateTagKey		= "terminate_blockchain"
-	TerminateTagValue	= "true"
+	HaltTagKey		= "halt_blockchain"
+	HaltTagValue	= "true"
 )
 //-----------------------------------------------------------------------------
 // BlockExecutor handles block execution and state updates.
@@ -139,7 +139,7 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 
 	if len(abciResponses.EndBlock.Tags) > 0 {
 		tag := abciResponses.EndBlock.Tags[0]
-		if bytes.Equal(tag.Key, []byte(TerminateTagKey)) && bytes.Equal(tag.Value, []byte(TerminateTagValue)) {
+		if bytes.Equal(tag.Key, []byte(HaltTagKey)) && bytes.Equal(tag.Value, []byte(HaltTagValue)) {
 			state.Deprecated = true
 		}
 	}
