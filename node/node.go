@@ -533,7 +533,7 @@ func (n *Node) OnStart() error {
 	}
 
 	if n.consensusState.Deprecated || n.config.Deprecated {
-		n.Logger.Info("This blockchain has been terminated. The consensus engine and p2p gossip have been disabled. Only query rpc interfaces are available")
+		n.Logger.Info("This blockchain was halt. The consensus engine and p2p gossip have been disabled. Only query rpc interfaces are available")
 		return nil
 	}
 
