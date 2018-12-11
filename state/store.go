@@ -62,12 +62,6 @@ func LoadState(db dbm.DB) State {
 	return loadState(db, stateKey)
 }
 
-////////////////////  iris/tendermint begin  ///////////////////////////
-func LoadPreState(db dbm.DB) State {
-	return loadState(db, statePreKey)
-}
-////////////////////  iris/tendermint end  ///////////////////////////
-
 func loadState(db dbm.DB, key []byte) (state State) {
 	buf := db.Get(key)
 	if len(buf) == 0 {
@@ -90,12 +84,6 @@ func loadState(db dbm.DB, key []byte) (state State) {
 func SaveState(db dbm.DB, state State) {
 	saveState(db, state, stateKey)
 }
-
-////////////////////  iris/tendermint begin  ///////////////////////////
-func SavePreState(db dbm.DB, state State) {
-	saveState(db, state, statePreKey)
-}
-////////////////////  iris/tendermint end  ///////////////////////////
 
 func saveState(db dbm.DB, state State, key []byte) {
 	nextHeight := state.LastBlockHeight + 1
