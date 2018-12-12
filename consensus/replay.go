@@ -249,6 +249,12 @@ func (h *Handshaker) Handshake(proxyApp proxy.AppConns, config *cfg.BaseConfig) 
 	// Set AppVersion on the state.
 	h.initialState.Version.Consensus.App = version.Protocol(res.AppVersion)
 
+	////////////////////  iris/tendermint begin  ///////////////////////////
+	state := sm.LoadState(h.stateDB)
+	state.Version.Consensus.App = version.Protocol(res.AppVersion)
+	sm.SaveState(h.stateDB, state)
+	////////////////////  iris/tendermint end  ///////////////////////////
+
 	// Replay blocks up to the latest in the blockstore.
 	_, err = h.ReplayBlocks(h.initialState, appHash, blockHeight, proxyApp, config)
 	if err != nil {
