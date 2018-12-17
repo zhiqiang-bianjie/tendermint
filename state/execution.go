@@ -17,6 +17,8 @@ import (
 const (
 	HaltTagKey   = "halt_blockchain"
 	HaltTagValue = "true"
+	UpgradeFailureTagKey = "upgrade_failure"
+
 )
 
 //-----------------------------------------------------------------------------
@@ -279,6 +281,11 @@ func execBlockOnProxyApp(
 	if err != nil {
 		logger.Error("Error in proxyAppConn.EndBlock", "err", err)
 		return nil, err
+	}
+
+
+	if tag, ok := abci.GetTagByKey(abciResponses.EndBlock.Tags, UpgradeFailureTagKey); ok{
+		return nil, fmt.Errorf(string(tag.Value))
 	}
 
 	logger.Info("Executed block", "height", block.Height, "validTxs", validTxs, "invalidTxs", invalidTxs)
