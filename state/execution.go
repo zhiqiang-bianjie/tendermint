@@ -135,11 +135,8 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 		return state, fmt.Errorf("Commit failed for application: %v", err)
 	}
 
-	if len(abciResponses.EndBlock.Tags) > 0 {
-		tag := abciResponses.EndBlock.Tags[0]
-		if bytes.Equal(tag.Key, []byte(HaltTagKey)) && bytes.Equal(tag.Value, []byte(HaltTagValue)) {
-			state.Deprecated = true
-		}
+	if tag, ok := abci.GetTagByKey(abciResponses.EndBlock.Tags, HaltTagKey); ok && bytes.Equal(tag.Value, []byte(HaltTagValue)) {
+		state.Deprecated = true
 	}
 
 	// Lock mempool, commit app state, update mempoool.
