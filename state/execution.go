@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,13 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
+)
+
+const (
+	HaltTagKey   = "halt_blockchain"
+	HaltTagValue = "true"
+	UpgradeFailureTagKey = "upgrade_failure"
+
 )
 
 //-----------------------------------------------------------------------------
@@ -125,6 +133,13 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 	state, err = updateState(state, blockID, &block.Header, abciResponses, validatorUpdates)
 	if err != nil {
 		return state, fmt.Errorf("Commit failed for application: %v", err)
+	}
+
+	if len(abciResponses.EndBlock.Tags) > 0 {
+		tag := abciResponses.EndBlock.Tags[0]
+		if bytes.Equal(tag.Key, []byte(HaltTagKey)) && bytes.Equal(tag.Value, []byte(HaltTagValue)) {
+			state.Deprecated = true
+		}
 	}
 
 	// Lock mempool, commit app state, update mempoool.
@@ -266,6 +281,11 @@ func execBlockOnProxyApp(
 	if err != nil {
 		logger.Error("Error in proxyAppConn.EndBlock", "err", err)
 		return nil, err
+	}
+
+
+	if tag, ok := abci.GetTagByKey(abciResponses.EndBlock.Tags, UpgradeFailureTagKey); ok{
+		return nil, fmt.Errorf(string(tag.Value))
 	}
 
 	logger.Info("Executed block", "height", block.Height, "validTxs", validTxs, "invalidTxs", invalidTxs)
