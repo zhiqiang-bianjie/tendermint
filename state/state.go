@@ -13,7 +13,8 @@ import (
 
 // database keys
 var (
-	stateKey = []byte("stateKey")
+	stateKey    = []byte("stateKey")
+	statePreKey = []byte("statePreKey")
 )
 
 //-----------------------------------------------------------------------------
@@ -107,7 +108,7 @@ func (state State) Copy() State {
 		AppHash: state.AppHash,
 
 		LastResultsHash: state.LastResultsHash,
-		Deprecated: state.Deprecated,
+		Deprecated:      state.Deprecated,
 	}
 }
 
