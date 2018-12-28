@@ -109,6 +109,7 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 	}
 
 	fail.Fail() // XXX
+	preState := state.Copy()
 
 	// Save the results before we commit.
 	saveABCIResponses(blockExec.db, block.Height, abciResponses)
@@ -153,6 +154,7 @@ func (blockExec *BlockExecutor) ApplyBlock(state State, blockID types.BlockID, b
 	// Update the app hash and save the state.
 	state.AppHash = appHash
 	SaveState(blockExec.db, state)
+	SavePreState(blockExec.db, preState)
 
 	fail.Fail() // XXX
 
