@@ -8,6 +8,7 @@ import (
 	"reflect"
 	//"strconv"
 	//"strings"
+	"runtime"
 	"time"
 
 	abci "github.com/tendermint/tendermint/abci/types"
@@ -420,7 +421,8 @@ func (h *Handshaker) replayBlocks(state sm.State, proxyApp proxy.AppConns, appBl
 		}
 
 		if config.ReplayHeight > 0 && i > config.ReplayHeight {
-			cmn.Exit(fmt.Sprintf("Replay from height %d to height %d successfully", appBlockHeight, config.ReplayHeight))
+			fmt.Printf("Replay from height %d to height %d successfully", appBlockHeight, config.ReplayHeight)
+			runtime.Goexit()
 		}
 
 		h.nBlocks++
