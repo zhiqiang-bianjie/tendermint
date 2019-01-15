@@ -292,6 +292,12 @@ func execBlockOnProxyApp(
 
 func getBeginBlockValidatorInfo(block *types.Block, lastValSet *types.ValidatorSet, stateDB dbm.DB) (abci.LastCommitInfo, []abci.Evidence) {
 
+	// Just return empty commitInfo and evidence when replaying blocks
+	state := LoadState(stateDB)
+	if block.Height != state.LastBlockHeight + 1 {
+		return abci.LastCommitInfo{}, nil
+	}
+
 	// Sanity check that commit length matches validator set size -
 	// only applies after first block
 	if block.Height > 1 {
