@@ -418,7 +418,7 @@ func (h *Handshaker) replayBlocks(state sm.State, proxyApp proxy.AppConns, appBl
 
 		if len(appHash) != 0 {
 			if !bytes.Equal(block.Header.AppHash, appHash) {
-				panic(fmt.Sprintf("Mismatch replay appHash, expected %s, actual %s", block.AppHash.String(), cmn.HexBytes(appHash).String()))
+				panic(fmt.Sprintf("AppHash mismatch: expected %s, actual %s", block.AppHash.String(), cmn.HexBytes(appHash).String()))
 			}
 		}
 
