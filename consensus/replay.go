@@ -6,9 +6,9 @@ import (
 	"hash/crc32"
 	"io"
 	"reflect"
+	"runtime"
 	//"strconv"
 	//"strings"
-	"runtime"
 	"time"
 
 	abci "github.com/tendermint/tendermint/abci/types"
@@ -415,12 +415,19 @@ func (h *Handshaker) replayBlocks(state sm.State, proxyApp proxy.AppConns, appBl
 	for i := appBlockHeight + 1; i <= finalBlock; i++ {
 		h.logger.Info("Applying block", "height", i)
 		block := h.store.LoadBlock(i)
+
+		if len(appHash) != 0 {
+			if !bytes.Equal(block.Header.AppHash, appHash) {
+				panic(fmt.Sprintf("AppHash mismatch: expected %s, actual %s", block.AppHash.String(), cmn.HexBytes(appHash).String()))
+			}
+		}
+
 		appHash, err = sm.ExecCommitBlock(proxyApp.Consensus(), block, h.logger, state.LastValidators, h.stateDB)
 		if err != nil {
 			return nil, err
 		}
 
-		if config.ReplayHeight > 0 && i > config.ReplayHeight {
+		if config.ReplayHeight > 0 && i >= config.ReplayHeight {
 			fmt.Printf("Replay from height %d to height %d successfully", appBlockHeight, config.ReplayHeight)
 			runtime.Goexit()
 		}
