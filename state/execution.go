@@ -294,6 +294,16 @@ func execBlockOnProxyApp(
 
 func getBeginBlockValidatorInfo(block *types.Block, lastValSet *types.ValidatorSet, stateDB dbm.DB) (abci.LastCommitInfo, []abci.Evidence) {
 
+	state := LoadState(stateDB)
+	// For replaying blocks, load history validator set
+	if block.Height > 1 && block.Height != state.LastBlockHeight + 1 {
+		var err error
+		lastValSet, err = LoadValidators(stateDB, block.Height - 1)
+		if err != nil {
+			panic(fmt.Sprintf("failed to load validatorset at heith %d", state.LastBlockHeight))
+		}
+	}
+
 	// Sanity check that commit length matches validator set size -
 	// only applies after first block
 	if block.Height > 1 {
