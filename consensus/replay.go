@@ -6,9 +6,9 @@ import (
 	"hash/crc32"
 	"io"
 	"reflect"
+	"runtime"
 	//"strconv"
 	//"strings"
-	"runtime"
 	"time"
 
 	abci "github.com/tendermint/tendermint/abci/types"
