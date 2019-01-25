@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"encoding/hex"
 
 	"github.com/tendermint/tendermint/crypto"
 	dbm "github.com/tendermint/tendermint/libs/db"
@@ -13,7 +14,7 @@ import (
 //-----------------------------------------------------
 // Validate block
 
-func validateBlock(stateDB dbm.DB, state State, block *types.Block) error {
+func validateBlock(stateDB dbm.DB, evpool EvidencePool, state State, block *types.Block) error {
 	// Validate internal consistency.
 	if err := block.ValidateBasic(); err != nil {
 		return err
@@ -147,11 +148,24 @@ func validateBlock(stateDB dbm.DB, state State, block *types.Block) error {
 		return types.NewErrEvidenceOverflow(maxEvidenceBytes, evidenceBytes)
 	}
 
+	// key = hex(evidence.Hash())
+	// value = evidence.String()
+	evMap := make(map[string]string)
+
 	// Validate all evidence.
 	for _, ev := range block.Evidence.Evidence {
+		if _, ok := evMap[hex.EncodeToString(ev.Address())]; ok {
+			err := errors.New("Repeated evidence")
+			return types.NewErrEvidenceInvalid(ev, err)
+		}
+		if evpool.IsCommitted(ev){
+			err := errors.New("This evidence has been committed")
+			return types.NewErrEvidenceInvalid(ev, err)
+		}
 		if err := VerifyEvidence(stateDB, state, ev); err != nil {
 			return types.NewErrEvidenceInvalid(ev, err)
 		}
+		evMap[hex.EncodeToString(ev.Address())] = ev.String()
 	}
 
 	// NOTE: We can't actually verify it's the right proposer because we dont

@@ -186,6 +186,7 @@ func (store *EvidenceStore) MarkEvidenceAsCommitted(evidence types.Evidence) {
 
 	ei := store.getEvidenceInfo(evidence)
 	ei.Committed = true
+	ei.Evidence = evidence
 
 	lookupKey := keyLookup(evidence)
 	store.db.SetSync(lookupKey, cdc.MustMarshalBinaryBare(ei))
