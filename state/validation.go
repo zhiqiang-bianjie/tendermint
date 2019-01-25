@@ -150,7 +150,7 @@ func validateBlock(stateDB dbm.DB, evpool EvidencePool, state State, block *type
 	// Validate all evidence.
 	for _, ev := range block.Evidence.Evidence {
 		if evpool.IsCommitted(ev){
-			err := errors.New("This evidence has been commited")
+			err := errors.New("This evidence has been committed")
 			return types.NewErrEvidenceInvalid(ev, err)
 		}
 		if err := VerifyEvidence(stateDB, state, ev); err != nil {

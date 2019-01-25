@@ -119,7 +119,7 @@ func (evpool *EvidencePool) AddEvidence(evidence types.Evidence) (err error) {
 
 func (evpool *EvidencePool) IsCommitted(evidence types.Evidence) bool {
 	ei_ := evpool.evidenceStore.GetEvidence(evidence.Height(), evidence.Hash())
-	if ei_ != nil && ei_.Evidence != nil && ei_.Committed == true {
+	if ei_ != nil && ei_.Evidence != nil && ei_.Committed {
 		return true
 	}
 	return false
