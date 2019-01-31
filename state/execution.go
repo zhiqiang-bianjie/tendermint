@@ -86,7 +86,7 @@ func (blockExec *BlockExecutor) SetEventBus(eventBus types.BlockEventPublisher) 
 // Validation does not mutate state, but does require historical information from the stateDB,
 // ie. to verify evidence from a validator at an old height.
 func (blockExec *BlockExecutor) ValidateBlock(state State, block *types.Block) error {
-	return validateBlock(blockExec.db, blockExec.evpool, state, block)
+	return validateBlock(blockExec.metrics, blockExec.db, blockExec.evpool, state, block)
 }
 
 // ApplyBlock validates the block against the state, executes it against the app,
@@ -204,6 +204,7 @@ func (blockExec *BlockExecutor) Commit(
 		"appHash", fmt.Sprintf("%X", res.Data),
 	)
 
+	startTime := time.Now().UnixNano()
 	// Update mempool.
 	err = blockExec.mempool.Update(
 		block.Height,
@@ -211,6 +212,8 @@ func (blockExec *BlockExecutor) Commit(
 		TxPreCheck(state),
 		TxPostCheck(state),
 	)
+	endTime := time.Now().UnixNano()
+	blockExec.metrics.RecheckTime.Observe(float64(endTime-startTime) / 1000000)
 
 	return res.Data, err
 }

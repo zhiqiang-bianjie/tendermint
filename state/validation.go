@@ -14,7 +14,7 @@ import (
 //-----------------------------------------------------
 // Validate block
 
-func validateBlock(stateDB dbm.DB, evpool EvidencePool, state State, block *types.Block) error {
+func validateBlock(metrics *Metrics,stateDB dbm.DB, evpool EvidencePool, state State, block *types.Block) error {
 	// Validate internal consistency.
 	if err := block.ValidateBasic(); err != nil {
 		return err
@@ -66,6 +66,7 @@ func validateBlock(stateDB dbm.DB, evpool EvidencePool, state State, block *type
 
 	// Validate app info
 	if !bytes.Equal(block.AppHash, state.AppHash) {
+		metrics.AppHashConflict.With("proposer", block.ProposerAddress.String()).Set(float64(1))
 		return fmt.Errorf("Wrong Block.Header.AppHash.  Expected %X, got %v",
 			state.AppHash,
 			block.AppHash,
