@@ -35,7 +35,7 @@ func PrometheusMetrics(namespace string) *Metrics {
 			Name:      "recheck_time",
 			Help:      "Time cost on recheck in ms.",
 			Buckets:   stdprometheus.LinearBuckets(1, 10, 10),
-		}, []string{"height"}),
+		}, []string{}),
 		AppHashConflict: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
