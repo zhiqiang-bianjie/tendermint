@@ -3,6 +3,7 @@ package state
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -213,7 +214,7 @@ func (blockExec *BlockExecutor) Commit(
 		TxPostCheck(state),
 	)
 	endTime := time.Now().UnixNano()
-	blockExec.metrics.RecheckTime.Observe(float64(endTime-startTime) / 1000000)
+	blockExec.metrics.RecheckTime.With("height", strconv.FormatInt(block.Height, 10)).Observe(float64(endTime-startTime) / 1000000)
 
 	return res.Data, err
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"encoding/hex"
+	"strconv"
 
 	"github.com/tendermint/tendermint/crypto"
 	dbm "github.com/tendermint/tendermint/libs/db"
@@ -66,7 +67,7 @@ func validateBlock(metrics *Metrics,stateDB dbm.DB, evpool EvidencePool, state S
 
 	// Validate app info
 	if !bytes.Equal(block.AppHash, state.AppHash) {
-		metrics.AppHashConflict.With("proposer", block.ProposerAddress.String()).Set(float64(1))
+		metrics.AppHashConflict.With("proposer", block.ProposerAddress.String(), "height", strconv.FormatInt(block.Height, 10)).Add(float64(1))
 		return fmt.Errorf("Wrong Block.Header.AppHash.  Expected %X, got %v",
 			state.AppHash,
 			block.AppHash,

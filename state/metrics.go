@@ -17,7 +17,7 @@ type Metrics struct {
 	RecheckTime metrics.Histogram
 
 	// App hash conflict error
-	AppHashConflict metrics.Gauge
+	AppHashConflict metrics.Counter
 }
 
 func PrometheusMetrics(namespace string) *Metrics {
@@ -35,13 +35,13 @@ func PrometheusMetrics(namespace string) *Metrics {
 			Name:      "recheck_time",
 			Help:      "Time cost on recheck in ms.",
 			Buckets:   stdprometheus.LinearBuckets(1, 10, 10),
-		}, []string{}),
-		AppHashConflict: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+		}, []string{"height"}),
+		AppHashConflict: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "app_hash_conflict",
 			Help:      "App hash conflict error",
-		}, []string{"proposer"}),
+		}, []string{"proposer", "height"}),
 	}
 }
 
@@ -49,6 +49,6 @@ func NopMetrics() *Metrics {
 	return &Metrics{
 		BlockProcessingTime: discard.NewHistogram(),
 		RecheckTime: 	     discard.NewHistogram(),
-		AppHashConflict:	 discard.NewGauge(),
+		AppHashConflict:	 discard.NewCounter(),
 	}
 }
