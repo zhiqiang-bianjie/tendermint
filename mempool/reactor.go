@@ -116,19 +116,21 @@ func (memR *MempoolReactor) broadcastTxRoutine(peer p2p.Peer) {
 
 	var next *clist.CElement
 	for {
+		select {
+		case <-peer.Quit():
+			return
+		case <-memR.Quit():
+			return
+		default:
+			// continue to broadcast transaction
+		}
 		// This happens because the CElement we were looking at got garbage
 		// collected (removed). That is, .NextWait() returned nil. Go ahead and
 		// start from the beginning.
 		if next == nil {
-			select {
-			case <-memR.Mempool.TxsWaitChan(): // Wait until a tx is available
-				if next = memR.Mempool.TxsFront(); next == nil {
-					continue
-				}
-			case <-peer.Quit():
-				return
-			case <-memR.Quit():
-				return
+			<-memR.Mempool.TxsWaitChan() // Wait until a tx is available
+			if next = memR.Mempool.TxsFront(); next == nil {
+				continue
 			}
 		}
 
