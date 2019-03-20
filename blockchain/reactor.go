@@ -1,6 +1,7 @@
 package blockchain
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
@@ -180,6 +181,12 @@ func (bcR *BlockchainReactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) 
 		return
 	}
 
+	if err = msg.ValidateBasic(); err != nil {
+		bcR.Logger.Error("Peer sent us invalid msg", "peer", src, "msg", msg, "err", err)
+		bcR.Switch.StopPeerForError(src, err)
+		return
+	}
+
 	bcR.Logger.Debug("Receive", "src", src, "chID", chID, "msg", msg)
 
 	switch msg := msg.(type) {
@@ -188,7 +195,6 @@ func (bcR *BlockchainReactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) 
 			// Unfortunately not queued since the queue is full.
 		}
 	case *bcBlockResponseMessage:
-		// Got a block.
 		bcR.pool.AddBlock(src.ID(), msg.Block, len(msgBytes))
 	case *bcStatusRequestMessage:
 		// Send peer our state.
@@ -201,7 +207,7 @@ func (bcR *BlockchainReactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) 
 		// Got a peer status. Unverified.
 		bcR.pool.SetPeerHeight(src.ID(), msg.Height)
 	default:
-		bcR.Logger.Error(cmn.Fmt("Unknown message type %v", reflect.TypeOf(msg)))
+		bcR.Logger.Error(fmt.Sprintf("Unknown message type %v", reflect.TypeOf(msg)))
 	}
 }
 
@@ -258,8 +264,12 @@ FOR_LOOP:
 				bcR.Logger.Info("Time to switch to consensus reactor!", "height", height)
 				bcR.pool.Stop()
 
-				conR := bcR.Switch.Reactor("CONSENSUS").(consensusReactor)
-				conR.SwitchToConsensus(state, blocksSynced)
+				conR, ok := bcR.Switch.Reactor("CONSENSUS").(consensusReactor)
+				if ok {
+					conR.SwitchToConsensus(state, blocksSynced)
+				} else {
+					// should only happen during testing
+				}
 
 				break FOR_LOOP
 			}
@@ -290,7 +300,7 @@ FOR_LOOP:
 				didProcessCh <- struct{}{}
 			}
 
-			firstParts := first.MakePartSet(state.ConsensusParams.BlockPartSizeBytes)
+			firstParts := first.MakePartSet(types.BlockPartSizeBytes)
 			firstPartsHeader := firstParts.Header()
 			firstID := types.BlockID{first.Hash(), firstPartsHeader}
 			// Finally, verify the first block using the second's commit
@@ -308,6 +318,13 @@ FOR_LOOP:
 					// still need to clean up the rest.
 					bcR.Switch.StopPeerForError(peer, fmt.Errorf("BlockchainReactor validation error: %v", err))
 				}
+				peerID2 := bcR.pool.RedoRequest(second.Height)
+				peer2 := bcR.Switch.Peers().Get(peerID2)
+				if peer2 != nil && peer2 != peer {
+					// NOTE: we've already removed the peer's request, but we
+					// still need to clean up the rest.
+					bcR.Switch.StopPeerForError(peer2, fmt.Errorf("BlockchainReactor validation error: %v", err))
+				}
 				continue FOR_LOOP
 			} else {
 				bcR.pool.PopRequest()
@@ -321,7 +338,7 @@ FOR_LOOP:
 				state, err = bcR.blockExec.ApplyBlock(state, firstID, first)
 				if err != nil {
 					// TODO This is bad, are we zombie?
-					cmn.PanicQ(cmn.Fmt("Failed to process committed block (%d:%X): %v",
+					cmn.PanicQ(fmt.Sprintf("Failed to process committed block (%d:%X): %v",
 						first.Height, first.Hash(), err))
 				}
 				blocksSynced++
@@ -352,15 +369,17 @@ func (bcR *BlockchainReactor) BroadcastStatusRequest() error {
 // Messages
 
 // BlockchainMessage is a generic message for this reactor.
-type BlockchainMessage interface{}
+type BlockchainMessage interface {
+	ValidateBasic() error
+}
 
 func RegisterBlockchainMessages(cdc *amino.Codec) {
 	cdc.RegisterInterface((*BlockchainMessage)(nil), nil)
-	cdc.RegisterConcrete(&bcBlockRequestMessage{}, "tendermint/mempool/BlockRequest", nil)
-	cdc.RegisterConcrete(&bcBlockResponseMessage{}, "tendermint/mempool/BlockResponse", nil)
-	cdc.RegisterConcrete(&bcNoBlockResponseMessage{}, "tendermint/mempool/NoBlockResponse", nil)
-	cdc.RegisterConcrete(&bcStatusResponseMessage{}, "tendermint/mempool/StatusResponse", nil)
-	cdc.RegisterConcrete(&bcStatusRequestMessage{}, "tendermint/mempool/StatusRequest", nil)
+	cdc.RegisterConcrete(&bcBlockRequestMessage{}, "tendermint/blockchain/BlockRequest", nil)
+	cdc.RegisterConcrete(&bcBlockResponseMessage{}, "tendermint/blockchain/BlockResponse", nil)
+	cdc.RegisterConcrete(&bcNoBlockResponseMessage{}, "tendermint/blockchain/NoBlockResponse", nil)
+	cdc.RegisterConcrete(&bcStatusResponseMessage{}, "tendermint/blockchain/StatusResponse", nil)
+	cdc.RegisterConcrete(&bcStatusRequestMessage{}, "tendermint/blockchain/StatusRequest", nil)
 }
 
 func decodeMsg(bz []byte) (msg BlockchainMessage, err error) {
@@ -377,16 +396,32 @@ type bcBlockRequestMessage struct {
 	Height int64
 }
 
+// ValidateBasic performs basic validation.
+func (m *bcBlockRequestMessage) ValidateBasic() error {
+	if m.Height < 0 {
+		return errors.New("Negative Height")
+	}
+	return nil
+}
+
 func (m *bcBlockRequestMessage) String() string {
-	return cmn.Fmt("[bcBlockRequestMessage %v]", m.Height)
+	return fmt.Sprintf("[bcBlockRequestMessage %v]", m.Height)
 }
 
 type bcNoBlockResponseMessage struct {
 	Height int64
 }
 
+// ValidateBasic performs basic validation.
+func (m *bcNoBlockResponseMessage) ValidateBasic() error {
+	if m.Height < 0 {
+		return errors.New("Negative Height")
+	}
+	return nil
+}
+
 func (brm *bcNoBlockResponseMessage) String() string {
-	return cmn.Fmt("[bcNoBlockResponseMessage %d]", brm.Height)
+	return fmt.Sprintf("[bcNoBlockResponseMessage %d]", brm.Height)
 }
 
 //-------------------------------------
@@ -395,8 +430,17 @@ type bcBlockResponseMessage struct {
 	Block *types.Block
 }
 
+// ValidateBasic performs basic validation.
+func (m *bcBlockResponseMessage) ValidateBasic() error {
+	if err := m.Block.ValidateBasic(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (m *bcBlockResponseMessage) String() string {
-	return cmn.Fmt("[bcBlockResponseMessage %v]", m.Block.Height)
+	return fmt.Sprintf("[bcBlockResponseMessage %v]", m.Block.Height)
 }
 
 //-------------------------------------
@@ -405,8 +449,16 @@ type bcStatusRequestMessage struct {
 	Height int64
 }
 
+// ValidateBasic performs basic validation.
+func (m *bcStatusRequestMessage) ValidateBasic() error {
+	if m.Height < 0 {
+		return errors.New("Negative Height")
+	}
+	return nil
+}
+
 func (m *bcStatusRequestMessage) String() string {
-	return cmn.Fmt("[bcStatusRequestMessage %v]", m.Height)
+	return fmt.Sprintf("[bcStatusRequestMessage %v]", m.Height)
 }
 
 //-------------------------------------
@@ -415,6 +467,14 @@ type bcStatusResponseMessage struct {
 	Height int64
 }
 
+// ValidateBasic performs basic validation.
+func (m *bcStatusResponseMessage) ValidateBasic() error {
+	if m.Height < 0 {
+		return errors.New("Negative Height")
+	}
+	return nil
+}
+
 func (m *bcStatusResponseMessage) String() string {
-	return cmn.Fmt("[bcStatusResponseMessage %v]", m.Height)
+	return fmt.Sprintf("[bcStatusResponseMessage %v]", m.Height)
 }

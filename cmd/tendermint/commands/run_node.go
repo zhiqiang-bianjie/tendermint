@@ -2,6 +2,9 @@ package commands
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -19,6 +22,8 @@ func AddNodeFlags(cmd *cobra.Command) {
 
 	// node flags
 	cmd.Flags().Bool("fast_sync", config.FastSync, "Fast blockchain syncing")
+	cmd.Flags().Bool("deprecated", config.Deprecated, "Mark blockchain as deprecated")
+	cmd.Flags().Int64("replay_height", config.ReplayHeight, "Specify which height to replay to, this is useful for exporting at any height")
 
 	// abci flags
 	cmd.Flags().String("proxy_app", config.ProxyApp, "Proxy app address, or 'nilapp' or 'kvstore' for local testing.")
@@ -49,19 +54,31 @@ func NewRunNodeCmd(nodeProvider nm.NodeProvider) *cobra.Command {
 		Use:   "node",
 		Short: "Run the tendermint node",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Create & start node
 			n, err := nodeProvider(config, logger)
 			if err != nil {
 				return fmt.Errorf("Failed to create node: %v", err)
 			}
+
+			// Stop upon receiving SIGTERM or CTRL-C
+			c := make(chan os.Signal, 1)
+			signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+			go func() {
+				for sig := range c {
+					logger.Error(fmt.Sprintf("captured %v, exiting...", sig))
+					if n.IsRunning() {
+						n.Stop()
+					}
+					os.Exit(1)
+				}
+			}()
 
 			if err := n.Start(); err != nil {
 				return fmt.Errorf("Failed to start node: %v", err)
 			}
 			logger.Info("Started node", "nodeInfo", n.Switch().NodeInfo())
 
-			// Trap signal, run forever.
-			n.RunForever()
+			// Run forever
+			select {}
 
 			return nil
 		},

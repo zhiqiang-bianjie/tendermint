@@ -123,7 +123,7 @@ func (sc *SecretConnection) Write(data []byte) (n int, err error) {
 			data = nil
 		}
 		chunkLength := len(chunk)
-		binary.BigEndian.PutUint32(frame, uint32(chunkLength))
+		binary.LittleEndian.PutUint32(frame, uint32(chunkLength))
 		copy(frame[dataLenSize:], chunk)
 
 		aead, err := chacha20poly1305.New(sc.sendSecret[:])
@@ -172,7 +172,7 @@ func (sc *SecretConnection) Read(data []byte) (n int, err error) {
 	incrNonce(sc.recvNonce)
 	// end decryption
 
-	var chunkLength = binary.BigEndian.Uint32(frame) // read the first two bytes
+	var chunkLength = binary.LittleEndian.Uint32(frame) // read the first four bytes
 	if chunkLength > dataMaxSize {
 		return 0, errors.New("chunkLength is greater than dataMaxSize")
 	}
@@ -210,7 +210,7 @@ func shareEphPubKey(conn io.ReadWriteCloser, locEphPub *[32]byte) (remEphPub *[3
 	// Send our pubkey and receive theirs in tandem.
 	var trs, _ = cmn.Parallel(
 		func(_ int) (val interface{}, err error, abort bool) {
-			var _, err1 = cdc.MarshalBinaryWriter(conn, locEphPub)
+			var _, err1 = cdc.MarshalBinaryLengthPrefixedWriter(conn, locEphPub)
 			if err1 != nil {
 				return nil, err1, true // abort
 			}
@@ -218,7 +218,7 @@ func shareEphPubKey(conn io.ReadWriteCloser, locEphPub *[32]byte) (remEphPub *[3
 		},
 		func(_ int) (val interface{}, err error, abort bool) {
 			var _remEphPub [32]byte
-			var _, err2 = cdc.UnmarshalBinaryReader(conn, &_remEphPub, 1024*1024) // TODO
+			var _, err2 = cdc.UnmarshalBinaryLengthPrefixedReader(conn, &_remEphPub, 1024*1024) // TODO
 			if err2 != nil {
 				return nil, err2, true // abort
 			}
@@ -304,7 +304,7 @@ func shareAuthSignature(sc *SecretConnection, pubKey crypto.PubKey, signature []
 	// Send our info and receive theirs in tandem.
 	var trs, _ = cmn.Parallel(
 		func(_ int) (val interface{}, err error, abort bool) {
-			var _, err1 = cdc.MarshalBinaryWriter(sc, authSigMessage{pubKey, signature})
+			var _, err1 = cdc.MarshalBinaryLengthPrefixedWriter(sc, authSigMessage{pubKey, signature})
 			if err1 != nil {
 				return nil, err1, true // abort
 			}
@@ -312,7 +312,7 @@ func shareAuthSignature(sc *SecretConnection, pubKey crypto.PubKey, signature []
 		},
 		func(_ int) (val interface{}, err error, abort bool) {
 			var _recvMsg authSigMessage
-			var _, err2 = cdc.UnmarshalBinaryReader(sc, &_recvMsg, 1024*1024) // TODO
+			var _, err2 = cdc.UnmarshalBinaryLengthPrefixedReader(sc, &_recvMsg, 1024*1024) // TODO
 			if err2 != nil {
 				return nil, err2, true // abort
 			}
@@ -332,13 +332,12 @@ func shareAuthSignature(sc *SecretConnection, pubKey crypto.PubKey, signature []
 
 //--------------------------------------------------------------------------------
 
-// increment nonce big-endian by 1 with wraparound.
+// Increment nonce little-endian by 1 with wraparound.
+// Due to chacha20poly1305 expecting a 12 byte nonce we do not use the first four
+// bytes. We only increment a 64 bit unsigned int in the remaining 8 bytes
+// (little-endian in nonce[4:]).
 func incrNonce(nonce *[aeadNonceSize]byte) {
-	for i := aeadNonceSize - 1; 0 <= i; i-- {
-		nonce[i]++
-		// if this byte wrapped around to zero, we need to increment the next byte
-		if nonce[i] != 0 {
-			return
-		}
-	}
+	counter := binary.LittleEndian.Uint64(nonce[4:])
+	counter++
+	binary.LittleEndian.PutUint64(nonce[4:], counter)
 }

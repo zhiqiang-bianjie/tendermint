@@ -14,8 +14,8 @@ import (
 	metrics "github.com/rcrowley/go-metrics"
 
 	"github.com/tendermint/go-amino"
-	types "github.com/tendermint/tendermint/rpc/lib/types"
 	cmn "github.com/tendermint/tendermint/libs/common"
+	types "github.com/tendermint/tendermint/rpc/lib/types"
 )
 
 const (
@@ -174,9 +174,6 @@ func (c *WSClient) OnStart() error {
 	return nil
 }
 
-// OnStop implements cmn.Service.
-func (c *WSClient) OnStop() {}
-
 // Stop overrides cmn.Service#Stop. There is no other way to wait until Quit
 // channel is closed.
 func (c *WSClient) Stop() error {
@@ -217,7 +214,7 @@ func (c *WSClient) Send(ctx context.Context, request types.RPCRequest) error {
 
 // Call the given method. See Send description.
 func (c *WSClient) Call(ctx context.Context, method string, params map[string]interface{}) error {
-	request, err := types.MapToRequest(c.cdc, "ws-client", method, params)
+	request, err := types.MapToRequest(c.cdc, types.JSONRPCStringID("ws-client"), method, params)
 	if err != nil {
 		return err
 	}
@@ -227,7 +224,7 @@ func (c *WSClient) Call(ctx context.Context, method string, params map[string]in
 // CallWithArrayParams the given method with params in a form of array. See
 // Send description.
 func (c *WSClient) CallWithArrayParams(ctx context.Context, method string, params []interface{}) error {
-	request, err := types.ArrayToRequest(c.cdc, "ws-client", method, params)
+	request, err := types.ArrayToRequest(c.cdc, types.JSONRPCStringID("ws-client"), method, params)
 	if err != nil {
 		return err
 	}

@@ -2,14 +2,15 @@ package consensus
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	cmn "github.com/tendermint/tendermint/libs/common"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/types"
-	cmn "github.com/tendermint/tendermint/libs/common"
 )
 
 func init() {
@@ -38,7 +39,13 @@ func TestByzantine(t *testing.T) {
 	switches := make([]*p2p.Switch, N)
 	p2pLogger := logger.With("module", "p2p")
 	for i := 0; i < N; i++ {
-		switches[i] = p2p.NewSwitch(config.P2P)
+		switches[i] = p2p.MakeSwitch(
+			config.P2P,
+			i,
+			"foo", "1.0.0",
+			func(i int, sw *p2p.Switch) *p2p.Switch {
+				return sw
+			})
 		switches[i].SetLogger(p2pLogger.With("validator", i))
 	}
 
@@ -156,8 +163,8 @@ func TestByzantine(t *testing.T) {
 	case <-done:
 	case <-tick.C:
 		for i, reactor := range reactors {
-			t.Log(cmn.Fmt("Consensus Reactor %v", i))
-			t.Log(cmn.Fmt("%v", reactor))
+			t.Log(fmt.Sprintf("Consensus Reactor %v", i))
+			t.Log(fmt.Sprintf("%v", reactor))
 		}
 		t.Fatalf("Timed out waiting for all validators to commit first block")
 	}
@@ -172,16 +179,16 @@ func byzantineDecideProposalFunc(t *testing.T, height int64, round int, cs *Cons
 
 	// Create a new proposal block from state/txs from the mempool.
 	block1, blockParts1 := cs.createProposalBlock()
-	polRound, polBlockID := cs.Votes.POLInfo()
-	proposal1 := types.NewProposal(height, round, blockParts1.Header(), polRound, polBlockID)
+	polRound, propBlockID := cs.ValidRound, types.BlockID{block1.Hash(), blockParts1.Header()}
+	proposal1 := types.NewProposal(height, round, polRound, propBlockID)
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, proposal1); err != nil {
 		t.Error(err)
 	}
 
 	// Create a new proposal block from state/txs from the mempool.
 	block2, blockParts2 := cs.createProposalBlock()
-	polRound, polBlockID = cs.Votes.POLInfo()
-	proposal2 := types.NewProposal(height, round, blockParts2.Header(), polRound, polBlockID)
+	polRound, propBlockID = cs.ValidRound, types.BlockID{block2.Hash(), blockParts2.Header()}
+	proposal2 := types.NewProposal(height, round, polRound, propBlockID)
 	if err := cs.privValidator.SignProposal(cs.state.ChainID, proposal2); err != nil {
 		t.Error(err)
 	}
@@ -219,8 +226,8 @@ func sendProposalAndParts(height int64, round int, cs *ConsensusState, peer p2p.
 
 	// votes
 	cs.mtx.Lock()
-	prevote, _ := cs.signVote(types.VoteTypePrevote, blockHash, parts.Header())
-	precommit, _ := cs.signVote(types.VoteTypePrecommit, blockHash, parts.Header())
+	prevote, _ := cs.signVote(types.PrevoteType, blockHash, parts.Header())
+	precommit, _ := cs.signVote(types.PrecommitType, blockHash, parts.Header())
 	cs.mtx.Unlock()
 
 	peer.Send(VoteChannel, cdc.MustMarshalBinaryBare(&VoteMessage{prevote}))
@@ -256,7 +263,7 @@ func (br *ByzantineReactor) AddPeer(peer p2p.Peer) {
 	// Send our state to peer.
 	// If we're fast_syncing, broadcast a RoundStepMessage later upon SwitchToConsensus().
 	if !br.reactor.fastSync {
-		br.reactor.sendNewRoundStepMessages(peer)
+		br.reactor.sendNewRoundStepMessage(peer)
 	}
 }
 func (br *ByzantineReactor) RemovePeer(peer p2p.Peer, reason interface{}) {

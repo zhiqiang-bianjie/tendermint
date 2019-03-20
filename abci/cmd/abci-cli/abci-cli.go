@@ -22,6 +22,7 @@ import (
 	servertest "github.com/tendermint/tendermint/abci/tests/server"
 	"github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/abci/version"
+	"github.com/tendermint/tendermint/crypto/merkle"
 )
 
 // client is a global variable so it can be reused by the console
@@ -100,7 +101,7 @@ type queryResponse struct {
 	Key    []byte
 	Value  []byte
 	Height int64
-	Proof  []byte
+	Proof  *merkle.Proof
 }
 
 func Execute() error {
@@ -477,11 +478,8 @@ func muxOnCommands(cmd *cobra.Command, pArgs []string) error {
 }
 
 func cmdUnimplemented(cmd *cobra.Command, args []string) error {
-	// TODO: Print out all the sub-commands available
 	msg := "unimplemented command"
-	if err := cmd.Help(); err != nil {
-		msg = err.Error()
-	}
+
 	if len(args) > 0 {
 		msg += fmt.Sprintf(" args: [%s]", strings.Join(args, " "))
 	}
@@ -489,6 +487,17 @@ func cmdUnimplemented(cmd *cobra.Command, args []string) error {
 		Code: codeBad,
 		Log:  msg,
 	})
+
+	fmt.Println("Available commands:")
+	fmt.Printf("%s: %s\n", echoCmd.Use, echoCmd.Short)
+	fmt.Printf("%s: %s\n", infoCmd.Use, infoCmd.Short)
+	fmt.Printf("%s: %s\n", checkTxCmd.Use, checkTxCmd.Short)
+	fmt.Printf("%s: %s\n", deliverTxCmd.Use, deliverTxCmd.Short)
+	fmt.Printf("%s: %s\n", queryCmd.Use, queryCmd.Short)
+	fmt.Printf("%s: %s\n", commitCmd.Use, commitCmd.Short)
+	fmt.Printf("%s: %s\n", setOptionCmd.Use, setOptionCmd.Short)
+	fmt.Println("Use \"[command] --help\" for more information about a command.")
+
 	return nil
 }
 
@@ -740,7 +749,7 @@ func printResponse(cmd *cobra.Command, args []string, rsp response) {
 			fmt.Printf("-> value.hex: %X\n", rsp.Query.Value)
 		}
 		if rsp.Query.Proof != nil {
-			fmt.Printf("-> proof: %X\n", rsp.Query.Proof)
+			fmt.Printf("-> proof: %#v\n", rsp.Query.Proof)
 		}
 	}
 }

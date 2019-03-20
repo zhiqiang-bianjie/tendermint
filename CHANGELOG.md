@@ -1,5 +1,565 @@
 # Changelog
 
+## v0.27.3
+
+*December 16th, 2018*
+
+### BREAKING CHANGES:
+
+* Go API
+
+- [dep] [\#3027](https://github.com/tendermint/tendermint/issues/3027) Revert to mainline Go crypto library, eliminating the modified
+  `bcrypt.GenerateFromPassword`
+
+## v0.27.2
+
+*December 16th, 2018*
+
+### IMPROVEMENTS:
+
+- [node] [\#3025](https://github.com/tendermint/tendermint/issues/3025) Validate NodeInfo addresses on startup.
+
+### BUG FIXES:
+
+- [p2p] [\#3025](https://github.com/tendermint/tendermint/pull/3025) Revert to using defers in addrbook.  Fixes deadlocks in pex and consensus upon invalid ExternalAddr/ListenAddr configuration.
+
+## v0.27.1
+
+*December 15th, 2018*
+
+Special thanks to external contributors on this release:
+@danil-lashin, @hleb-albau, @james-ray, @leo-xinwang
+
+### FEATURES:
+- [rpc] [\#2964](https://github.com/tendermint/tendermint/issues/2964) Add `UnconfirmedTxs(limit)` and `NumUnconfirmedTxs()` methods to HTTP/Local clients (@danil-lashin)
+- [docs] [\#3004](https://github.com/tendermint/tendermint/issues/3004) Enable full-text search on docs pages
+
+### IMPROVEMENTS:
+- [consensus] [\#2971](https://github.com/tendermint/tendermint/issues/2971) Return error if ValidatorSet is empty after InitChain
+  (@leo-xinwang)
+- [ci/cd] [\#3005](https://github.com/tendermint/tendermint/issues/3005) Updated CircleCI job to trigger website build when docs are updated
+- [docs] Various updates
+
+### BUG FIXES:
+- [cmd] [\#2983](https://github.com/tendermint/tendermint/issues/2983) `testnet` command always sets `addr_book_strict = false`
+- [config] [\#2980](https://github.com/tendermint/tendermint/issues/2980) Fix CORS options formatting
+- [kv indexer] [\#2912](https://github.com/tendermint/tendermint/issues/2912) Don't ignore key when executing CONTAINS
+- [mempool] [\#2961](https://github.com/tendermint/tendermint/issues/2961) Call `notifyTxsAvailable` if there're txs left after committing a block, but recheck=false
+- [mempool] [\#2994](https://github.com/tendermint/tendermint/issues/2994) Reject txs with negative GasWanted
+- [p2p] [\#2990](https://github.com/tendermint/tendermint/issues/2990) Fix a bug where seeds don't disconnect from a peer after 3h
+- [consensus] [\#3006](https://github.com/tendermint/tendermint/issues/3006) Save state after InitChain only when stateHeight is also 0 (@james-ray)
+
+## v0.27.0
+
+*December 5th, 2018*
+
+Special thanks to external contributors on this release:
+@danil-lashin, @srmo
+
+Special thanks to @dlguddus for discovering a [major
+issue](https://github.com/tendermint/tendermint/issues/2718#issuecomment-440888677)
+in the proposer selection algorithm.
+
+Friendly reminder, we have a [bug bounty
+program](https://hackerone.com/tendermint).
+
+This release is primarily about fixes to the proposer selection algorithm
+in preparation for the [Cosmos Game of
+Stakes](https://blog.cosmos.network/the-game-of-stakes-is-open-for-registration-83a404746ee6).
+It also makes use of the `ConsensusParams.Validator.PubKeyTypes` to restrict the
+key types that can be used by validators, and removes the `Heartbeat` consensus
+message.
+
+### BREAKING CHANGES:
+
+* CLI/RPC/Config
+  - [rpc] [\#2932](https://github.com/tendermint/tendermint/issues/2932) Rename `accum` to `proposer_priority`
+
+* Go API
+  - [db] [\#2913](https://github.com/tendermint/tendermint/pull/2913)
+    ReverseIterator API change: start < end, and end is exclusive.
+  - [types] [\#2932](https://github.com/tendermint/tendermint/issues/2932) Rename `Validator.Accum` to `Validator.ProposerPriority`
+
+* Blockchain Protocol
+  - [state] [\#2714](https://github.com/tendermint/tendermint/issues/2714) Validators can now only use pubkeys allowed within
+    ConsensusParams.Validator.PubKeyTypes
+
+* P2P Protocol
+  - [consensus] [\#2871](https://github.com/tendermint/tendermint/issues/2871)
+    Remove *ProposalHeartbeat* message as it serves no real purpose (@srmo)
+  - [state] Fixes for proposer selection:
+    - [\#2785](https://github.com/tendermint/tendermint/issues/2785) Accum for new validators is `-1.125*totalVotingPower` instead of 0
+    - [\#2941](https://github.com/tendermint/tendermint/issues/2941) val.Accum is preserved during ValidatorSet.Update to avoid being
+      reset to 0
+
+### IMPROVEMENTS:
+
+- [state] [\#2929](https://github.com/tendermint/tendermint/issues/2929) Minor refactor of updateState logic (@danil-lashin)
+- [node] [\#2959](https://github.com/tendermint/tendermint/issues/2959) Allow node to start even if software's BlockProtocol is
+  different from state's BlockProtocol
+- [pex] [\#2959](https://github.com/tendermint/tendermint/issues/2959) Pex reactor logger uses `module=pex`
+
+### BUG FIXES:
+
+- [p2p] [\#2968](https://github.com/tendermint/tendermint/issues/2968) Panic on transport error rather than continuing to run but not
+  accept new connections
+- [p2p] [\#2969](https://github.com/tendermint/tendermint/issues/2969) Fix mismatch in peer count between `/net_info` and the prometheus
+  metrics
+- [rpc] [\#2408](https://github.com/tendermint/tendermint/issues/2408) `/broadcast_tx_commit`: Fix "interface conversion: interface {} in nil, not EventDataTx" panic (could happen if somebody sent a tx using `/broadcast_tx_commit` while Tendermint was being stopped)
+- [state] [\#2785](https://github.com/tendermint/tendermint/issues/2785) Fix accum for new validators to be `-1.125*totalVotingPower`
+  instead of 0, forcing them to wait before becoming the proposer. Also:
+    - do not batch clip
+    - keep accums averaged near 0
+- [txindex/kv] [\#2925](https://github.com/tendermint/tendermint/issues/2925) Don't return false positives when range searching for a prefix of a tag value
+- [types] [\#2938](https://github.com/tendermint/tendermint/issues/2938) Fix regression in v0.26.4 where we panic on empty
+  genDoc.Validators
+- [types] [\#2941](https://github.com/tendermint/tendermint/issues/2941) Preserve val.Accum during ValidatorSet.Update to avoid it being
+  reset to 0 every time a validator is updated
+
+## v0.26.4
+
+*November 27th, 2018*
+
+Special thanks to external contributors on this release:
+@ackratos, @goolAdapter, @james-ray, @joe-bowman, @kostko,
+@nagarajmanjunath, @tomtau
+
+Friendly reminder, we have a [bug bounty
+program](https://hackerone.com/tendermint).
+
+### FEATURES:
+
+- [rpc] [\#2747](https://github.com/tendermint/tendermint/issues/2747) Enable subscription to tags emitted from `BeginBlock`/`EndBlock` (@kostko)
+- [types] [\#2747](https://github.com/tendermint/tendermint/issues/2747) Add `ResultBeginBlock` and `ResultEndBlock` fields to `EventDataNewBlock`
+    and `EventDataNewBlockHeader` to support subscriptions (@kostko)
+- [types] [\#2918](https://github.com/tendermint/tendermint/issues/2918) Add Marshal, MarshalTo, Unmarshal methods to various structs
+  to support Protobuf compatibility (@nagarajmanjunath)
+
+### IMPROVEMENTS:
+
+- [config] [\#2877](https://github.com/tendermint/tendermint/issues/2877) Add `blocktime_iota` to the config.toml (@ackratos)
+    - NOTE: this should be a ConsensusParam, not part of the config, and will be
+      removed from the config at a later date
+      ([\#2920](https://github.com/tendermint/tendermint/issues/2920).
+- [mempool] [\#2882](https://github.com/tendermint/tendermint/issues/2882) Add txs from Update to cache
+- [mempool] [\#2891](https://github.com/tendermint/tendermint/issues/2891) Remove local int64 counter from being stored in every tx
+- [node] [\#2866](https://github.com/tendermint/tendermint/issues/2866) Add ability to instantiate IPCVal (@joe-bowman)
+
+### BUG FIXES:
+
+- [blockchain] [\#2731](https://github.com/tendermint/tendermint/issues/2731) Retry both blocks if either is bad to avoid getting stuck during fast sync (@goolAdapter)
+- [consensus] [\#2893](https://github.com/tendermint/tendermint/issues/2893) Use genDoc.Validators instead of state.NextValidators on replay when appHeight==0 (@james-ray)
+- [log] [\#2868](https://github.com/tendermint/tendermint/issues/2868) Fix `module=main` setting overriding all others
+    - NOTE: this changes the default logging behaviour to be much less verbose.
+      Set `log_level="info"` to restore the previous behaviour.
+- [rpc] [\#2808](https://github.com/tendermint/tendermint/issues/2808) Fix `accum` field in `/validators` by calling `IncrementAccum` if necessary
+- [rpc] [\#2811](https://github.com/tendermint/tendermint/issues/2811) Allow integer IDs in JSON-RPC requests (@tomtau)
+- [txindex/kv] [\#2759](https://github.com/tendermint/tendermint/issues/2759) Fix tx.height range queries
+- [txindex/kv] [\#2775](https://github.com/tendermint/tendermint/issues/2775) Order tx results by index if height is the same
+- [txindex/kv] [\#2908](https://github.com/tendermint/tendermint/issues/2908) Don't return false positives when searching for a prefix of a tag value
+
+## v0.26.3
+
+*November 17th, 2018*
+
+Special thanks to external contributors on this release:
+@danil-lashin, @kevlubkcm, @krhubert, @srmo
+
+Friendly reminder, we have a [bug bounty
+program](https://hackerone.com/tendermint).
+
+### BREAKING CHANGES:
+
+* Go API
+  - [rpc] [\#2791](https://github.com/tendermint/tendermint/issues/2791) Functions that start HTTP servers are now blocking:
+    - Impacts `StartHTTPServer`, `StartHTTPAndTLSServer`, and `StartGRPCServer`
+    - These functions now take a `net.Listener` instead of an address
+  - [rpc] [\#2767](https://github.com/tendermint/tendermint/issues/2767) Subscribing to events
+  `NewRound` and `CompleteProposal` return new types `EventDataNewRound` and
+  `EventDataCompleteProposal`, respectively, instead of the generic `EventDataRoundState`. (@kevlubkcm)
+
+### FEATURES:
+
+- [log] [\#2843](https://github.com/tendermint/tendermint/issues/2843) New `log_format` config option, which can be set to 'plain' for colored
+  text or 'json' for JSON output
+- [types] [\#2767](https://github.com/tendermint/tendermint/issues/2767) New event types EventDataNewRound (with ProposerInfo) and EventDataCompleteProposal (with BlockID). (@kevlubkcm)
+
+### IMPROVEMENTS:
+
+- [dep] [\#2844](https://github.com/tendermint/tendermint/issues/2844) Dependencies are no longer pinned to an exact version in the
+  Gopkg.toml:
+  - Serialization libs are allowed to vary by patch release
+  - Other libs are allowed to vary by minor release
+- [p2p] [\#2857](https://github.com/tendermint/tendermint/issues/2857) "Send failed" is logged at debug level instead of error.
+- [rpc] [\#2780](https://github.com/tendermint/tendermint/issues/2780) Add read and write timeouts to HTTP servers
+- [state] [\#2848](https://github.com/tendermint/tendermint/issues/2848) Make "Update to validators" msg value pretty (@danil-lashin)
+
+### BUG FIXES:
+- [consensus] [\#2819](https://github.com/tendermint/tendermint/issues/2819) Don't send proposalHearbeat if not a validator
+- [docs] [\#2859](https://github.com/tendermint/tendermint/issues/2859) Fix ConsensusParams details in spec
+- [libs/autofile] [\#2760](https://github.com/tendermint/tendermint/issues/2760) Comment out autofile permissions check - should fix
+  running Tendermint on Windows
+- [p2p] [\#2869](https://github.com/tendermint/tendermint/issues/2869) Set connection config properly instead of always using default
+- [p2p/pex] [\#2802](https://github.com/tendermint/tendermint/issues/2802) Seed mode fixes:
+  - Only disconnect from inbound peers
+  - Use FlushStop instead of Sleep to ensure all messages are sent before
+    disconnecting
+
+## v0.26.2
+
+*November 15th, 2018*
+
+Special thanks to external contributors on this release: @hleb-albau, @zhuzeyu
+
+Friendly reminder, we have a [bug bounty program](https://hackerone.com/tendermint).
+
+### FEATURES:
+
+- [rpc] [\#2582](https://github.com/tendermint/tendermint/issues/2582) Enable CORS on RPC API (@hleb-albau)
+
+### BUG FIXES:
+
+- [abci] [\#2748](https://github.com/tendermint/tendermint/issues/2748) Unlock mutex in localClient so even when app panics (e.g. during CheckTx), consensus continue working
+- [abci] [\#2748](https://github.com/tendermint/tendermint/issues/2748) Fix DATA RACE in localClient
+- [amino] [\#2822](https://github.com/tendermint/tendermint/issues/2822) Update to v0.14.1 to support compiling on 32-bit platforms
+- [rpc] [\#2748](https://github.com/tendermint/tendermint/issues/2748) Drain channel before calling Unsubscribe(All) in `/broadcast_tx_commit`
+
+## v0.26.1
+
+*November 11, 2018*
+
+Special thanks to external contributors on this release: @katakonst
+
+Friendly reminder, we have a [bug bounty program](https://hackerone.com/tendermint).
+
+### IMPROVEMENTS:
+
+- [consensus] [\#2704](https://github.com/tendermint/tendermint/issues/2704) Simplify valid POL round logic
+- [docs] [\#2749](https://github.com/tendermint/tendermint/issues/2749) Deduplicate some ABCI docs
+- [mempool] More detailed log messages
+    - [\#2724](https://github.com/tendermint/tendermint/issues/2724)
+    - [\#2762](https://github.com/tendermint/tendermint/issues/2762)
+
+### BUG FIXES:
+
+- [autofile] [\#2703](https://github.com/tendermint/tendermint/issues/2703) Do not panic when checking Head size
+- [crypto/merkle] [\#2756](https://github.com/tendermint/tendermint/issues/2756) Fix crypto/merkle ProofOperators.Verify to check bounds on keypath parts.
+- [mempool] fix a bug where we create a WAL despite `wal_dir` being empty
+- [p2p] [\#2771](https://github.com/tendermint/tendermint/issues/2771) Fix `peer-id` label name to `peer_id` in prometheus metrics
+- [p2p] [\#2797](https://github.com/tendermint/tendermint/pull/2797) Fix IDs in peer NodeInfo and require them for addresses
+  in AddressBook
+- [p2p] [\#2797](https://github.com/tendermint/tendermint/pull/2797) Do not close conn immediately after sending pex addrs in seed mode. Partial fix for [\#2092](https://github.com/tendermint/tendermint/issues/2092).
+
+## v0.26.0
+
+*November 2, 2018*
+
+Special thanks to external contributors on this release:
+@bradyjoestar, @connorwstein, @goolAdapter, @HaoyangLiu,
+@james-ray, @overbool, @phymbert, @Slamper, @Uzair1995, @yutianwu.
+
+Special thanks to @Slamper for a series of bug reports in our [bug bounty
+program](https://hackerone.com/tendermint) which are fixed in this release.
+
+This release is primarily about adding Version fields to various data structures,
+optimizing consensus messages for signing and verification in
+restricted environments (like HSMs and the Ethereum Virtual Machine), and
+aligning the consensus code with the [specification](https://arxiv.org/abs/1807.04938).
+It also includes our first take at a generalized merkle proof system, and
+changes the length of hashes used for hashing data structures from 20 to 32
+bytes.
+
+See the [UPGRADING.md](UPGRADING.md#v0.26.0) for details on upgrading to the new
+version.
+
+Please note that we are still making breaking changes to the protocols.
+While the new Version fields should help us to keep the software backwards compatible
+even while upgrading the protocols, we cannot guarantee that new releases will
+be compatible with old chains just yet. We expect there will be another breaking
+release or two before the Cosmos Hub launch, but we will otherwise be paying
+increasing attention to backwards compatibility. Thanks for bearing with us!
+
+### BREAKING CHANGES:
+
+* CLI/RPC/Config
+  * [config] [\#2232](https://github.com/tendermint/tendermint/issues/2232) Timeouts are now strings like "3s" and "100ms", not ints
+  * [config] [\#2505](https://github.com/tendermint/tendermint/issues/2505) Remove Mempool.RecheckEmpty (it was effectively useless anyways)
+  * [config] [\#2490](https://github.com/tendermint/tendermint/issues/2490) `mempool.wal` is disabled by default
+  * [privval] [\#2459](https://github.com/tendermint/tendermint/issues/2459) Split `SocketPVMsg`s implementations into Request and Response, where the Response may contain a error message (returned by the remote signer)
+  * [state] [\#2644](https://github.com/tendermint/tendermint/issues/2644) Add Version field to State, breaking the format of State as
+    encoded on disk.
+  * [rpc] [\#2298](https://github.com/tendermint/tendermint/issues/2298) `/abci_query` takes `prove` argument instead of `trusted` and switches the default
+    behaviour to `prove=false`
+  * [rpc] [\#2654](https://github.com/tendermint/tendermint/issues/2654) Remove all `node_info.other.*_version` fields in `/status` and
+    `/net_info`
+  * [rpc] [\#2636](https://github.com/tendermint/tendermint/issues/2636) Remove
+    `_params` suffix from fields in `consensus_params`.
+
+* Apps
+  * [abci] [\#2298](https://github.com/tendermint/tendermint/issues/2298) ResponseQuery.Proof is now a structured merkle.Proof, not just
+    arbitrary bytes
+  * [abci] [\#2644](https://github.com/tendermint/tendermint/issues/2644) Add Version to Header and shift all fields by one
+  * [abci] [\#2662](https://github.com/tendermint/tendermint/issues/2662) Bump the field numbers for some `ResponseInfo` fields to make room for
+      `AppVersion`
+  * [abci] [\#2636](https://github.com/tendermint/tendermint/issues/2636) Updates to ConsensusParams
+    * Remove `Params` suffix from field names
+    * Add `Params` suffix to message types
+    * Add new field and type, `Validator ValidatorParams`, to control what types of validator keys are allowed.
+
+* Go API
+  * [config] [\#2232](https://github.com/tendermint/tendermint/issues/2232) Timeouts are time.Duration, not ints
+  * [crypto/merkle & lite] [\#2298](https://github.com/tendermint/tendermint/issues/2298) Various changes to accomodate General Merkle trees
+  * [crypto/merkle] [\#2595](https://github.com/tendermint/tendermint/issues/2595) Remove all Hasher objects in favor of byte slices
+  * [crypto/merkle] [\#2635](https://github.com/tendermint/tendermint/issues/2635) merkle.SimpleHashFromTwoHashes is no longer exported
+  * [node] [\#2479](https://github.com/tendermint/tendermint/issues/2479) Remove node.RunForever
+  * [rpc/client] [\#2298](https://github.com/tendermint/tendermint/issues/2298) `ABCIQueryOptions.Trusted` -> `ABCIQueryOptions.Prove`
+  * [types] [\#2298](https://github.com/tendermint/tendermint/issues/2298) Remove `Index` and `Total` fields from `TxProof`.
+  * [types] [\#2598](https://github.com/tendermint/tendermint/issues/2598)
+    `VoteTypeXxx` are now of type `SignedMsgType byte` and named `XxxType`, eg.
+    `PrevoteType`, `PrecommitType`.
+  * [types] [\#2636](https://github.com/tendermint/tendermint/issues/2636) Rename fields in ConsensusParams to remove `Params` suffixes
+  * [types] [\#2735](https://github.com/tendermint/tendermint/issues/2735) Simplify Proposal message to align with spec
+
+* Blockchain Protocol
+  * [crypto/tmhash] [\#2732](https://github.com/tendermint/tendermint/issues/2732) TMHASH is now full 32-byte SHA256
+    * All hashes in the block header and Merkle trees are now 32-bytes
+    * PubKey Addresses are still only 20-bytes
+  * [state] [\#2587](https://github.com/tendermint/tendermint/issues/2587) Require block.Time of the fist block to be genesis time
+  * [state] [\#2644](https://github.com/tendermint/tendermint/issues/2644) Require block.Version to match state.Version
+  * [types] Update SignBytes for `Vote`/`Proposal`/`Heartbeat`:
+    * [\#2459](https://github.com/tendermint/tendermint/issues/2459) Use amino encoding instead of JSON in `SignBytes`.
+    * [\#2598](https://github.com/tendermint/tendermint/issues/2598) Reorder fields and use fixed sized encoding.
+    * [\#2598](https://github.com/tendermint/tendermint/issues/2598) Change `Type` field from `string` to `byte` and use new
+      `SignedMsgType` to enumerate.
+  * [types] [\#2730](https://github.com/tendermint/tendermint/issues/2730) Use
+    same order for fields in `Vote` as in the SignBytes
+  * [types] [\#2732](https://github.com/tendermint/tendermint/issues/2732) Remove the address field from the validator hash
+  * [types] [\#2644](https://github.com/tendermint/tendermint/issues/2644) Add Version struct to Header
+  * [types] [\#2609](https://github.com/tendermint/tendermint/issues/2609) ConsensusParams.Hash() is the hash of the amino encoded
+    struct instead of the Merkle tree of the fields
+  * [types] [\#2670](https://github.com/tendermint/tendermint/issues/2670) Header.Hash() builds Merkle tree out of fields in the same
+    order they appear in the header, instead of sorting by field name
+  * [types] [\#2682](https://github.com/tendermint/tendermint/issues/2682) Use proto3 `varint` encoding for ints that are usually unsigned (instead of zigzag encoding).
+  * [types] [\#2636](https://github.com/tendermint/tendermint/issues/2636) Add Validator field to ConsensusParams
+      (Used to control which pubkey types validators can use, by abci type).
+
+* P2P Protocol
+  * [consensus] [\#2652](https://github.com/tendermint/tendermint/issues/2652)
+    Replace `CommitStepMessage` with `NewValidBlockMessage`
+  * [consensus] [\#2735](https://github.com/tendermint/tendermint/issues/2735) Simplify `Proposal` message to align with spec
+  * [consensus] [\#2730](https://github.com/tendermint/tendermint/issues/2730)
+    Add `Type` field to `Proposal` and use same order of fields as in the
+    SignBytes for both `Proposal` and `Vote`
+  * [p2p] [\#2654](https://github.com/tendermint/tendermint/issues/2654) Add `ProtocolVersion` struct with protocol versions to top of
+    DefaultNodeInfo and require `ProtocolVersion.Block` to match during peer handshake
+
+
+### FEATURES:
+- [abci] [\#2557](https://github.com/tendermint/tendermint/issues/2557) Add `Codespace` field to `Response{CheckTx, DeliverTx, Query}`
+- [abci] [\#2662](https://github.com/tendermint/tendermint/issues/2662) Add `BlockVersion` and `P2PVersion` to `RequestInfo`
+- [crypto/merkle] [\#2298](https://github.com/tendermint/tendermint/issues/2298) General Merkle Proof scheme for chaining various types of Merkle trees together
+- [docs/architecture] [\#1181](https://github.com/tendermint/tendermint/issues/1181) S
+plit immutable and mutable parts of priv_validator.json
+
+### IMPROVEMENTS:
+- Additional Metrics
+    - [consensus] [\#2169](https://github.com/cosmos/cosmos-sdk/issues/2169)
+    - [p2p] [\#2169](https://github.com/cosmos/cosmos-sdk/issues/2169)
+- [config] [\#2232](https://github.com/tendermint/tendermint/issues/2232) Added ValidateBasic method, which performs basic checks
+- [crypto/ed25519] [\#2558](https://github.com/tendermint/tendermint/issues/2558) Switch to use latest `golang.org/x/crypto` through our fork at
+  github.com/tendermint/crypto
+- [libs/log] [\#2707](https://github.com/tendermint/tendermint/issues/2707) Add year to log format (@yutianwu)
+- [tools] [\#2238](https://github.com/tendermint/tendermint/issues/2238) Binary dependencies are now locked to a specific git commit
+
+### BUG FIXES:
+- [\#2711](https://github.com/tendermint/tendermint/issues/2711) Validate all incoming reactor messages. Fixes various bugs due to negative ints.
+- [autofile] [\#2428](https://github.com/tendermint/tendermint/issues/2428) Group.RotateFile need call Flush() before rename (@goolAdapter)
+- [common] [\#2533](https://github.com/tendermint/tendermint/issues/2533) Fixed a bug in the `BitArray.Or` method
+- [common] [\#2506](https://github.com/tendermint/tendermint/issues/2506) Fixed a bug in the `BitArray.Sub` method (@james-ray)
+- [common] [\#2534](https://github.com/tendermint/tendermint/issues/2534) Fix `BitArray.PickRandom` to choose uniformly from true bits
+- [consensus] [\#1690](https://github.com/tendermint/tendermint/issues/1690) Wait for
+  timeoutPrecommit before starting next round
+- [consensus] [\#1745](https://github.com/tendermint/tendermint/issues/1745) Wait for
+  Proposal or timeoutProposal before entering prevote
+- [consensus] [\#2642](https://github.com/tendermint/tendermint/issues/2642) Only propose ValidBlock, not LockedBlock
+- [consensus] [\#2642](https://github.com/tendermint/tendermint/issues/2642) Initialized ValidRound and LockedRound to -1
+- [consensus] [\#1637](https://github.com/tendermint/tendermint/issues/1637) Limit the amount of evidence that can be included in a
+  block
+- [consensus] [\#2652](https://github.com/tendermint/tendermint/issues/2652) Ensure valid block property with faulty proposer
+- [evidence] [\#2515](https://github.com/tendermint/tendermint/issues/2515) Fix db iter leak (@goolAdapter)
+- [libs/event] [\#2518](https://github.com/tendermint/tendermint/issues/2518) Fix event concurrency flaw (@goolAdapter)
+- [node] [\#2434](https://github.com/tendermint/tendermint/issues/2434) Make node respond to signal interrupts while sleeping for genesis time
+- [state] [\#2616](https://github.com/tendermint/tendermint/issues/2616) Pass nil to NewValidatorSet() when genesis file's Validators field is nil
+- [p2p] [\#2555](https://github.com/tendermint/tendermint/issues/2555) Fix p2p switch FlushThrottle value (@goolAdapter)
+- [p2p] [\#2668](https://github.com/tendermint/tendermint/issues/2668) Reconnect to originally dialed address (not self-reported address) for persistent peers
+
+## v0.25.0
+
+*September 22, 2018*
+
+Special thanks to external contributors on this release:
+@scriptionist, @bradyjoestar, @WALL-E
+
+This release is mostly about the ConsensusParams - removing fields and enforcing MaxGas.
+It also addresses some issues found via security audit, removes various unused
+functions from `libs/common`, and implements
+[ADR-012](https://github.com/tendermint/tendermint/blob/develop/docs/architecture/adr-012-peer-transport.md).
+
+Friendly reminder, we have a [bug bounty program](https://hackerone.com/tendermint).
+
+BREAKING CHANGES:
+
+* CLI/RPC/Config
+  * [rpc] [\#2391](https://github.com/tendermint/tendermint/issues/2391) /status `result.node_info.other` became a map
+  * [types] [\#2364](https://github.com/tendermint/tendermint/issues/2364) Remove `TxSize` and `BlockGossip` from `ConsensusParams`
+    * Maximum tx size is now set implicitly via the `BlockSize.MaxBytes`
+    * The size of block parts in the consensus is now fixed to 64kB
+
+* Apps
+  * [mempool] [\#2360](https://github.com/tendermint/tendermint/issues/2360) Mempool tracks the `ResponseCheckTx.GasWanted` and
+    `ConsensusParams.BlockSize.MaxGas` and enforces:
+    - `GasWanted <= MaxGas` for every tx
+    - `(sum of GasWanted in block) <= MaxGas` for block proposal
+
+* Go API
+  * [libs/common] [\#2431](https://github.com/tendermint/tendermint/issues/2431) Remove Word256 due to lack of use
+  * [libs/common] [\#2452](https://github.com/tendermint/tendermint/issues/2452) Remove the following functions due to lack of use:
+    * byteslice.go: cmn.IsZeros, cmn.RightPadBytes, cmn.LeftPadBytes, cmn.PrefixEndBytes
+    * strings.go: cmn.IsHex, cmn.StripHex
+    * int.go: Uint64Slice, all put/get int64 methods
+
+FEATURES:
+- [rpc] [\#2415](https://github.com/tendermint/tendermint/issues/2415) New `/consensus_params?height=X` endpoint to query the consensus
+  params at any height (@scriptonist)
+- [types] [\#1714](https://github.com/tendermint/tendermint/issues/1714) Add Address to GenesisValidator
+- [metrics] [\#2337](https://github.com/tendermint/tendermint/issues/2337) `consensus.block_interval_metrics` is now gauge, not histogram (you will be able to see spikes, if any)
+- [libs] [\#2286](https://github.com/tendermint/tendermint/issues/2286) Panic if `autofile` or `db/fsdb` permissions change from 0600.
+
+IMPROVEMENTS:
+- [libs/db] [\#2371](https://github.com/tendermint/tendermint/issues/2371) Output error instead of panic when the given `db_backend` is not initialised (@bradyjoestar)
+- [mempool] [\#2399](https://github.com/tendermint/tendermint/issues/2399) Make mempool cache a proper LRU (@bradyjoestar)
+- [p2p] [\#2126](https://github.com/tendermint/tendermint/issues/2126) Introduce PeerTransport interface to improve isolation of concerns
+- [libs/common] [\#2326](https://github.com/tendermint/tendermint/issues/2326) Service returns ErrNotStarted
+
+BUG FIXES:
+- [node] [\#2294](https://github.com/tendermint/tendermint/issues/2294) Delay starting node until Genesis time
+- [consensus] [\#2048](https://github.com/tendermint/tendermint/issues/2048) Correct peer statistics for marking peer as good
+- [rpc] [\#2460](https://github.com/tendermint/tendermint/issues/2460) StartHTTPAndTLSServer() now passes StartTLS() errors back to the caller rather than hanging forever.
+- [p2p] [\#2047](https://github.com/tendermint/tendermint/issues/2047) Accept new connections asynchronously
+- [tm-bench] [\#2410](https://github.com/tendermint/tendermint/issues/2410) Enforce minimum transaction size (@WALL-E)
+
+## 0.24.0
+
+*September 6th, 2018*
+
+Special thanks to external contributors with PRs included in this release: ackratos, james-ray, bradyjoestar,
+peerlink, Ahmah2009, bluele, b00f.
+
+This release includes breaking upgrades in the block header,
+including the long awaited changes for delaying validator set updates by one
+block to better support light clients.
+It also fixes enforcement on the maximum size of blocks, and includes a BFT
+timestamp in each block that can be safely used by applications.
+There are also some minor breaking changes to the rpc, config, and ABCI.
+
+See the [UPGRADING.md](UPGRADING.md#v0.24.0) for details on upgrading to the new
+version.
+
+From here on, breaking changes will be broken down to better reflect how users
+are affected by a change.
+
+A few more breaking changes are in the works - each will come with a clear
+Architecture Decision Record (ADR) explaining the change. You can review ADRs
+[here](https://github.com/tendermint/tendermint/tree/develop/docs/architecture)
+or in the [open Pull Requests](https://github.com/tendermint/tendermint/pulls).
+You can also check in on the [issues marked as
+breaking](https://github.com/tendermint/tendermint/issues?q=is%3Aopen+is%3Aissue+label%3Abreaking).
+
+BREAKING CHANGES:
+
+* CLI/RPC/Config
+  - [config] [\#2169](https://github.com/tendermint/tendermint/issues/2169) Replace MaxNumPeers with MaxNumInboundPeers and MaxNumOutboundPeers
+  - [config] [\#2300](https://github.com/tendermint/tendermint/issues/2300) Reduce default mempool size from 100k to 5k, until ABCI rechecking is implemented.
+  - [rpc] [\#1815](https://github.com/tendermint/tendermint/issues/1815) `/commit` returns a `signed_header` field instead of everything being top-level
+
+* Apps
+  - [abci] Added address of the original proposer of the block to Header
+  - [abci] Change ABCI Header to match Tendermint exactly
+  - [abci] [\#2159](https://github.com/tendermint/tendermint/issues/2159) Update use of `Validator` (see
+    [ADR-018](https://github.com/tendermint/tendermint/blob/develop/docs/architecture/adr-018-ABCI-Validators.md)):
+    - Remove PubKey from `Validator` (so it's just Address and Power)
+    - Introduce `ValidatorUpdate` (with just PubKey and Power)
+    - InitChain and EndBlock use ValidatorUpdate
+    - Update field names and types in BeginBlock
+  - [state] [\#1815](https://github.com/tendermint/tendermint/issues/1815) Validator set changes are now delayed by one block
+    - updates returned in ResponseEndBlock for block H will be included in RequestBeginBlock for block H+2
+
+* Go API
+  - [lite] [\#1815](https://github.com/tendermint/tendermint/issues/1815) Complete refactor of the package
+  - [node] [\#2212](https://github.com/tendermint/tendermint/issues/2212) NewNode now accepts a `*p2p.NodeKey` (@bradyjoestar)
+  - [libs/common] [\#2199](https://github.com/tendermint/tendermint/issues/2199) Remove Fmt, in favor of fmt.Sprintf
+  - [libs/common] SplitAndTrim was deleted
+  - [libs/common] [\#2274](https://github.com/tendermint/tendermint/issues/2274) Remove unused Math functions like MaxInt, MaxInt64,
+    MinInt, MinInt64 (@Ahmah2009)
+  - [libs/clist] Panics if list extends beyond MaxLength
+  - [crypto] [\#2205](https://github.com/tendermint/tendermint/issues/2205) Rename AminoRoute variables to no longer be prefixed by signature type.
+
+* Blockchain Protocol
+  - [state] [\#1815](https://github.com/tendermint/tendermint/issues/1815) Validator set changes are now delayed by one block (!)
+    - Add NextValidatorSet to State, changes on-disk representation of state
+  - [state] [\#2184](https://github.com/tendermint/tendermint/issues/2184) Enforce ConsensusParams.BlockSize.MaxBytes (See
+    [ADR-020](https://github.com/tendermint/tendermint/blob/develop/docs/architecture/adr-020-block-size.md)).
+    - Remove ConsensusParams.BlockSize.MaxTxs
+    - Introduce maximum sizes for all components of a block, including ChainID
+  - [types] Updates to the block Header:
+    - [\#1815](https://github.com/tendermint/tendermint/issues/1815) NextValidatorsHash - hash of the validator set for the next block,
+      so the current validators actually sign over the hash for the new
+      validators
+    - [\#2106](https://github.com/tendermint/tendermint/issues/2106) ProposerAddress - address of the block's original proposer
+  - [consensus] [\#2203](https://github.com/tendermint/tendermint/issues/2203) Implement BFT time
+    - Timestamp in block must be monotonic and equal the median of timestamps in block's LastCommit
+  - [crypto] [\#2239](https://github.com/tendermint/tendermint/issues/2239) Secp256k1 signature changes (See
+    [ADR-014](https://github.com/tendermint/tendermint/blob/develop/docs/architecture/adr-014-secp-malleability.md)):
+    - format changed from DER to `r || s`, both little endian encoded as 32 bytes.
+    - malleability removed by requiring `s` to be in canonical form.
+
+* P2P Protocol
+  - [p2p] [\#2263](https://github.com/tendermint/tendermint/issues/2263) Update secret connection to use a little endian encoded nonce
+  - [blockchain] [\#2213](https://github.com/tendermint/tendermint/issues/2213) Fix Amino routes for blockchain reactor messages
+    (@peerlink)
+
+
+FEATURES:
+- [types] [\#2015](https://github.com/tendermint/tendermint/issues/2015) Allow genesis file to have 0 validators (@b00f)
+  - Initial validator set can be determined by the app in ResponseInitChain
+- [rpc] [\#2161](https://github.com/tendermint/tendermint/issues/2161) New event `ValidatorSetUpdates` for when the validator set changes
+- [crypto/multisig] [\#2164](https://github.com/tendermint/tendermint/issues/2164) Introduce multisig pubkey and signature format
+- [libs/db] [\#2293](https://github.com/tendermint/tendermint/issues/2293) Allow passing options through when creating instances of leveldb dbs
+
+IMPROVEMENTS:
+- [docs] Lint documentation with `write-good` and `stop-words`.
+- [docs] [\#2249](https://github.com/tendermint/tendermint/issues/2249) Refactor, deduplicate, and improve the ABCI docs and spec (with thanks to @ttmc).
+- [scripts] [\#2196](https://github.com/tendermint/tendermint/issues/2196) Added json2wal tool, which is supposed to help our users restore (@bradyjoestar)
+  corrupted WAL files and compose test WAL files (@bradyjoestar)
+- [mempool] [\#2234](https://github.com/tendermint/tendermint/issues/2234) Now stores txs by hash inside of the cache, to mitigate memory leakage
+- [mempool] [\#2166](https://github.com/tendermint/tendermint/issues/2166) Set explicit capacity for map when updating txs (@bluele)
+
+BUG FIXES:
+- [config] [\#2284](https://github.com/tendermint/tendermint/issues/2284) Replace `db_path` with `db_dir` from automatically generated configuration files.
+- [mempool] [\#2188](https://github.com/tendermint/tendermint/issues/2188) Fix OOM issue from cache map and list getting out of sync
+- [state] [\#2051](https://github.com/tendermint/tendermint/issues/2051) KV store index supports searching by `tx.height` (@ackratos)
+- [rpc] [\#2327](https://github.com/tendermint/tendermint/issues/2327) `/dial_peers` does not try to dial existing peers
+- [node] [\#2323](https://github.com/tendermint/tendermint/issues/2323) Filter empty strings from config lists (@james-ray)
+- [abci/client] [\#2236](https://github.com/tendermint/tendermint/issues/2236) Fix closing GRPC connection (@bradyjoestar)
+
+## 0.23.1
+
+*August 22nd, 2018*
+
+BUG FIXES:
+- [libs/autofile] [\#2261](https://github.com/tendermint/tendermint/issues/2261) Fix log rotation so it actually happens.
+    - Fixes issues with consensus WAL growing unbounded ala [\#2259](https://github.com/tendermint/tendermint/issues/2259)
+
 ## 0.23.0
 
 *August 5th, 2018*
@@ -638,7 +1198,7 @@ BREAKING CHANGES:
     - use scripts/wal2json to convert to json for debugging
 
 FEATURES:
- - new `certifiers` pkg contains the tendermint light-client library (name subject to change)!
+ - new `Verifiers` pkg contains the tendermint light-client library (name subject to change)!
  - rpc: `/genesis` includes the `app_options` .
  - rpc: `/abci_query` takes an additional `height` parameter to support historical queries.
  - rpc/client: new ABCIQueryWithOptions supports options like `trusted` (set false to get a proof) and `height` to query a historical height.

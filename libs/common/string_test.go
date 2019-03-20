@@ -3,6 +3,8 @@ package common
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -13,49 +15,12 @@ func TestStringInSlice(t *testing.T) {
 	assert.False(t, StringInSlice("", []string{}))
 }
 
-func TestIsHex(t *testing.T) {
-	notHex := []string{
-		"", "   ", "a", "x", "0", "0x", "0X", "0x ", "0X ", "0X a",
-		"0xf ", "0x f", "0xp", "0x-",
-		"0xf", "0XBED", "0xF", "0xbed", // Odd lengths
-	}
-	for _, v := range notHex {
-		assert.False(t, IsHex(v), "%q is not hex", v)
-	}
-	hex := []string{
-		"0x00", "0x0a", "0x0F", "0xFFFFFF", "0Xdeadbeef", "0x0BED",
-		"0X12", "0X0A",
-	}
-	for _, v := range hex {
-		assert.True(t, IsHex(v), "%q is hex", v)
-	}
-}
-
-func TestSplitAndTrim(t *testing.T) {
-	testCases := []struct {
-		s        string
-		sep      string
-		cutset   string
-		expected []string
-	}{
-		{"a,b,c", ",", " ", []string{"a", "b", "c"}},
-		{" a , b , c ", ",", " ", []string{"a", "b", "c"}},
-		{" a, b, c ", ",", " ", []string{"a", "b", "c"}},
-		{" , ", ",", " ", []string{"", ""}},
-		{"   ", ",", " ", []string{""}},
-	}
-
-	for _, tc := range testCases {
-		assert.Equal(t, tc.expected, SplitAndTrim(tc.s, tc.sep, tc.cutset), "%s", tc.s)
-	}
-}
-
 func TestIsASCIIText(t *testing.T) {
 	notASCIIText := []string{
 		"", "\xC2", "\xC2\xA2", "\xFF", "\x80", "\xF0", "\n", "\t",
 	}
 	for _, v := range notASCIIText {
-		assert.False(t, IsHex(v), "%q is not ascii-text", v)
+		assert.False(t, IsASCIIText(v), "%q is not ascii-text", v)
 	}
 	asciiText := []string{
 		" ", ".", "x", "$", "_", "abcdefg;", "-", "0x00", "0", "123",
@@ -71,4 +36,23 @@ func TestASCIITrim(t *testing.T) {
 	assert.Equal(t, ASCIITrim("a "), "a")
 	assert.Equal(t, ASCIITrim(" a "), "a")
 	assert.Panics(t, func() { ASCIITrim("\xC2\xA2") })
+}
+
+func TestStringSliceEqual(t *testing.T) {
+	tests := []struct {
+		a    []string
+		b    []string
+		want bool
+	}{
+		{[]string{"hello", "world"}, []string{"hello", "world"}, true},
+		{[]string{"test"}, []string{"test"}, true},
+		{[]string{"test1"}, []string{"test2"}, false},
+		{[]string{"hello", "world."}, []string{"hello", "world!"}, false},
+		{[]string{"only 1 word"}, []string{"two", "words!"}, false},
+		{[]string{"two", "words!"}, []string{"only 1 word"}, false},
+	}
+	for i, tt := range tests {
+		require.Equal(t, tt.want, StringSliceEqual(tt.a, tt.b),
+			"StringSliceEqual failed on test %d", i)
+	}
 }

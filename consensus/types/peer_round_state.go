@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tendermint/tendermint/types"
 	cmn "github.com/tendermint/tendermint/libs/common"
+	"github.com/tendermint/tendermint/types"
 )
 
 //-----------------------------------------------------------------------------
@@ -54,4 +54,32 @@ func (prs PeerRoundState) StringIndented(indent string) string {
 		indent, prs.LastCommit, prs.LastCommitRound,
 		indent, prs.CatchupCommit, prs.CatchupCommitRound,
 		indent)
+}
+
+//-----------------------------------------------------------
+// These methods are for Protobuf Compatibility
+
+// Size returns the size of the amino encoding, in bytes.
+func (ps *PeerRoundState) Size() int {
+	bs, _ := ps.Marshal()
+	return len(bs)
+}
+
+// Marshal returns the amino encoding.
+func (ps *PeerRoundState) Marshal() ([]byte, error) {
+	return cdc.MarshalBinaryBare(ps)
+}
+
+// MarshalTo calls Marshal and copies to the given buffer.
+func (ps *PeerRoundState) MarshalTo(data []byte) (int, error) {
+	bs, err := ps.Marshal()
+	if err != nil {
+		return -1, err
+	}
+	return copy(data, bs), nil
+}
+
+// Unmarshal deserializes from amino encoded form.
+func (ps *PeerRoundState) Unmarshal(bs []byte) error {
+	return cdc.UnmarshalBinaryBare(bs, ps)
 }

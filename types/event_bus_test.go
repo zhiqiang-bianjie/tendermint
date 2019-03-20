@@ -22,7 +22,7 @@ func TestEventBusPublishEventTx(t *testing.T) {
 	defer eventBus.Stop()
 
 	tx := Tx("foo")
-	result := abci.ResponseDeliverTx{Data: []byte("bar"), Tags: []cmn.KVPair{{[]byte("baz"), []byte("1")}}}
+	result := abci.ResponseDeliverTx{Data: []byte("bar"), Tags: []cmn.KVPair{{Key: []byte("baz"), Value: []byte("1")}}}
 
 	txEventsCh := make(chan interface{})
 
@@ -58,6 +58,90 @@ func TestEventBusPublishEventTx(t *testing.T) {
 	}
 }
 
+func TestEventBusPublishEventNewBlock(t *testing.T) {
+	eventBus := NewEventBus()
+	err := eventBus.Start()
+	require.NoError(t, err)
+	defer eventBus.Stop()
+
+	block := MakeBlock(0, []Tx{}, nil, []Evidence{})
+	resultBeginBlock := abci.ResponseBeginBlock{Tags: []cmn.KVPair{{Key: []byte("baz"), Value: []byte("1")}}}
+	resultEndBlock := abci.ResponseEndBlock{Tags: []cmn.KVPair{{Key: []byte("foz"), Value: []byte("2")}}}
+
+	txEventsCh := make(chan interface{})
+
+	// PublishEventNewBlock adds the tm.event tag, so the query below should work
+	query := "tm.event='NewBlock' AND baz=1 AND foz=2"
+	err = eventBus.Subscribe(context.Background(), "test", tmquery.MustParse(query), txEventsCh)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		for e := range txEventsCh {
+			edt := e.(EventDataNewBlock)
+			assert.Equal(t, block, edt.Block)
+			assert.Equal(t, resultBeginBlock, edt.ResultBeginBlock)
+			assert.Equal(t, resultEndBlock, edt.ResultEndBlock)
+			close(done)
+		}
+	}()
+
+	err = eventBus.PublishEventNewBlock(EventDataNewBlock{
+		Block:            block,
+		ResultBeginBlock: resultBeginBlock,
+		ResultEndBlock:   resultEndBlock,
+	})
+	assert.NoError(t, err)
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("did not receive a block after 1 sec.")
+	}
+}
+
+func TestEventBusPublishEventNewBlockHeader(t *testing.T) {
+	eventBus := NewEventBus()
+	err := eventBus.Start()
+	require.NoError(t, err)
+	defer eventBus.Stop()
+
+	block := MakeBlock(0, []Tx{}, nil, []Evidence{})
+	resultBeginBlock := abci.ResponseBeginBlock{Tags: []cmn.KVPair{{Key: []byte("baz"), Value: []byte("1")}}}
+	resultEndBlock := abci.ResponseEndBlock{Tags: []cmn.KVPair{{Key: []byte("foz"), Value: []byte("2")}}}
+
+	txEventsCh := make(chan interface{})
+
+	// PublishEventNewBlockHeader adds the tm.event tag, so the query below should work
+	query := "tm.event='NewBlockHeader' AND baz=1 AND foz=2"
+	err = eventBus.Subscribe(context.Background(), "test", tmquery.MustParse(query), txEventsCh)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		for e := range txEventsCh {
+			edt := e.(EventDataNewBlockHeader)
+			assert.Equal(t, block.Header, edt.Header)
+			assert.Equal(t, resultBeginBlock, edt.ResultBeginBlock)
+			assert.Equal(t, resultEndBlock, edt.ResultEndBlock)
+			close(done)
+		}
+	}()
+
+	err = eventBus.PublishEventNewBlockHeader(EventDataNewBlockHeader{
+		Header:           block.Header,
+		ResultBeginBlock: resultBeginBlock,
+		ResultEndBlock:   resultEndBlock,
+	})
+	assert.NoError(t, err)
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("did not receive a block header after 1 sec.")
+	}
+}
+
 func TestEventBusPublish(t *testing.T) {
 	eventBus := NewEventBus()
 	err := eventBus.Start()
@@ -88,17 +172,15 @@ func TestEventBusPublish(t *testing.T) {
 	require.NoError(t, err)
 	err = eventBus.PublishEventVote(EventDataVote{})
 	require.NoError(t, err)
-	err = eventBus.PublishEventProposalHeartbeat(EventDataProposalHeartbeat{})
-	require.NoError(t, err)
 	err = eventBus.PublishEventNewRoundStep(EventDataRoundState{})
 	require.NoError(t, err)
 	err = eventBus.PublishEventTimeoutPropose(EventDataRoundState{})
 	require.NoError(t, err)
 	err = eventBus.PublishEventTimeoutWait(EventDataRoundState{})
 	require.NoError(t, err)
-	err = eventBus.PublishEventNewRound(EventDataRoundState{})
+	err = eventBus.PublishEventNewRound(EventDataNewRound{})
 	require.NoError(t, err)
-	err = eventBus.PublishEventCompleteProposal(EventDataRoundState{})
+	err = eventBus.PublishEventCompleteProposal(EventDataCompleteProposal{})
 	require.NoError(t, err)
 	err = eventBus.PublishEventPolka(EventDataRoundState{})
 	require.NoError(t, err)
@@ -107,6 +189,8 @@ func TestEventBusPublish(t *testing.T) {
 	err = eventBus.PublishEventRelock(EventDataRoundState{})
 	require.NoError(t, err)
 	err = eventBus.PublishEventLock(EventDataRoundState{})
+	require.NoError(t, err)
+	err = eventBus.PublishEventValidatorSetUpdates(EventDataValidatorSetUpdates{})
 	require.NoError(t, err)
 
 	select {

@@ -1,3 +1,5 @@
+package mock
+
 /*
 package mock returns a Client implementation that
 accepts various (mock) implementations of the various methods.
@@ -11,16 +13,15 @@ For real clients, you probably want the "http" package.  If you
 want to directly call a tendermint node in process, you can use the
 "local" package.
 */
-package mock
 
 import (
 	"reflect"
 
+	cmn "github.com/tendermint/tendermint/libs/common"
 	"github.com/tendermint/tendermint/rpc/client"
 	"github.com/tendermint/tendermint/rpc/core"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	"github.com/tendermint/tendermint/types"
-	cmn "github.com/tendermint/tendermint/libs/common"
 )
 
 // Client wraps arbitrary implementations of the various interfaces.
@@ -87,7 +88,7 @@ func (c Client) ABCIQuery(path string, data cmn.HexBytes) (*ctypes.ResultABCIQue
 }
 
 func (c Client) ABCIQueryWithOptions(path string, data cmn.HexBytes, opts client.ABCIQueryOptions) (*ctypes.ResultABCIQuery, error) {
-	return core.ABCIQuery(path, data, opts.Height, opts.Trusted)
+	return core.ABCIQuery(path, data, opts.Height, opts.Prove)
 }
 
 func (c Client) BroadcastTxCommit(tx types.Tx) (*ctypes.ResultBroadcastTxCommit, error) {

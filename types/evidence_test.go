@@ -1,9 +1,13 @@
 package types
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/tendermint/tendermint/crypto/secp256k1"
+	"github.com/tendermint/tendermint/crypto/tmhash"
 )
 
 type voteData struct {
@@ -18,7 +22,7 @@ func makeVote(val PrivValidator, chainID string, valIndex int, height int64, rou
 		ValidatorIndex:   valIndex,
 		Height:           height,
 		Round:            round,
-		Type:             byte(step),
+		Type:             SignedMsgType(step),
 		BlockID:          blockID,
 	}
 	err := val.SignVote(chainID, v)
@@ -31,10 +35,11 @@ func makeVote(val PrivValidator, chainID string, valIndex int, height int64, rou
 func TestEvidence(t *testing.T) {
 	val := NewMockPV()
 	val2 := NewMockPV()
-	blockID := makeBlockID("blockhash", 1000, "partshash")
-	blockID2 := makeBlockID("blockhash2", 1000, "partshash")
-	blockID3 := makeBlockID("blockhash", 10000, "partshash")
-	blockID4 := makeBlockID("blockhash", 10000, "partshash2")
+
+	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
+	blockID2 := makeBlockID([]byte("blockhash2"), 1000, []byte("partshash"))
+	blockID3 := makeBlockID([]byte("blockhash"), 10000, []byte("partshash"))
+	blockID4 := makeBlockID([]byte("blockhash"), 10000, []byte("partshash2"))
 
 	const chainID = "mychain"
 
@@ -89,13 +94,65 @@ func TestEvidenceList(t *testing.T) {
 	assert.False(t, evl.Has(&DuplicateVoteEvidence{}))
 }
 
+func TestMaxEvidenceBytes(t *testing.T) {
+	val := NewMockPV()
+	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), math.MaxInt64, tmhash.Sum([]byte("partshash")))
+	blockID2 := makeBlockID(tmhash.Sum([]byte("blockhash2")), math.MaxInt64, tmhash.Sum([]byte("partshash")))
+	const chainID = "mychain"
+	ev := &DuplicateVoteEvidence{
+		PubKey: secp256k1.GenPrivKey().PubKey(), // use secp because it's pubkey is longer
+		VoteA:  makeVote(val, chainID, math.MaxInt64, math.MaxInt64, math.MaxInt64, math.MaxInt64, blockID),
+		VoteB:  makeVote(val, chainID, math.MaxInt64, math.MaxInt64, math.MaxInt64, math.MaxInt64, blockID2),
+	}
+
+	bz, err := cdc.MarshalBinaryLengthPrefixed(ev)
+	require.NoError(t, err)
+
+	assert.EqualValues(t, MaxEvidenceBytes, len(bz))
+}
+
 func randomDuplicatedVoteEvidence() *DuplicateVoteEvidence {
 	val := NewMockPV()
-	blockID := makeBlockID("blockhash", 1000, "partshash")
-	blockID2 := makeBlockID("blockhash2", 1000, "partshash")
+	blockID := makeBlockID([]byte("blockhash"), 1000, []byte("partshash"))
+	blockID2 := makeBlockID([]byte("blockhash2"), 1000, []byte("partshash"))
 	const chainID = "mychain"
 	return &DuplicateVoteEvidence{
 		VoteA: makeVote(val, chainID, 0, 10, 2, 1, blockID),
 		VoteB: makeVote(val, chainID, 0, 10, 2, 1, blockID2),
+	}
+}
+
+func TestDuplicateVoteEvidenceValidation(t *testing.T) {
+	val := NewMockPV()
+	blockID := makeBlockID(tmhash.Sum([]byte("blockhash")), math.MaxInt64, tmhash.Sum([]byte("partshash")))
+	blockID2 := makeBlockID(tmhash.Sum([]byte("blockhash2")), math.MaxInt64, tmhash.Sum([]byte("partshash")))
+	const chainID = "mychain"
+
+	testCases := []struct {
+		testName         string
+		malleateEvidence func(*DuplicateVoteEvidence)
+		expectErr        bool
+	}{
+		{"Good DuplicateVoteEvidence", func(ev *DuplicateVoteEvidence) {}, false},
+		{"Nil vote A", func(ev *DuplicateVoteEvidence) { ev.VoteA = nil }, true},
+		{"Nil vote B", func(ev *DuplicateVoteEvidence) { ev.VoteB = nil }, true},
+		{"Nil votes", func(ev *DuplicateVoteEvidence) {
+			ev.VoteA = nil
+			ev.VoteB = nil
+		}, true},
+		{"Invalid vote type", func(ev *DuplicateVoteEvidence) {
+			ev.VoteA = makeVote(val, chainID, math.MaxInt64, math.MaxInt64, math.MaxInt64, 0, blockID2)
+		}, true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.testName, func(t *testing.T) {
+			ev := &DuplicateVoteEvidence{
+				PubKey: secp256k1.GenPrivKey().PubKey(),
+				VoteA:  makeVote(val, chainID, math.MaxInt64, math.MaxInt64, math.MaxInt64, 0x02, blockID),
+				VoteB:  makeVote(val, chainID, math.MaxInt64, math.MaxInt64, math.MaxInt64, 0x02, blockID2),
+			}
+			tc.malleateEvidence(ev)
+			assert.Equal(t, tc.expectErr, ev.ValidateBasic() != nil, "Validate Basic had an unexpected result")
+		})
 	}
 }

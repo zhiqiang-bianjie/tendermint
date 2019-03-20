@@ -12,15 +12,15 @@ import (
 //------------------------------------------------------------------------
 
 func calcValidatorsKey(height int64) []byte {
-	return []byte(cmn.Fmt("validatorsKey:%v", height))
+	return []byte(fmt.Sprintf("validatorsKey:%v", height))
 }
 
 func calcConsensusParamsKey(height int64) []byte {
-	return []byte(cmn.Fmt("consensusParamsKey:%v", height))
+	return []byte(fmt.Sprintf("consensusParamsKey:%v", height))
 }
 
 func calcABCIResponsesKey(height int64) []byte {
-	return []byte(cmn.Fmt("abciResponsesKey:%v", height))
+	return []byte(fmt.Sprintf("abciResponsesKey:%v", height))
 }
 
 // LoadStateFromDBOrGenesisFile loads the most recent state from the database,
@@ -62,6 +62,10 @@ func LoadState(db dbm.DB) State {
 	return loadState(db, stateKey)
 }
 
+func LoadPreState(db dbm.DB) State {
+	return loadState(db, statePreKey)
+}
+
 func loadState(db dbm.DB, key []byte) (state State) {
 	buf := db.Get(key)
 	if len(buf) == 0 {
@@ -71,7 +75,7 @@ func loadState(db dbm.DB, key []byte) (state State) {
 	err := cdc.UnmarshalBinaryBare(buf, &state)
 	if err != nil {
 		// DATA HAS BEEN CORRUPTED OR THE SPEC HAS CHANGED
-		cmn.Exit(cmn.Fmt(`LoadState: Data has been corrupted or its spec has changed:
+		cmn.Exit(fmt.Sprintf(`LoadState: Data has been corrupted or its spec has changed:
                 %v\n`, err))
 	}
 	// TODO: ensure that buf is completely read.
@@ -85,11 +89,24 @@ func SaveState(db dbm.DB, state State) {
 	saveState(db, state, stateKey)
 }
 
+func SavePreState(db dbm.DB, state State) {
+	saveState(db, state, statePreKey)
+}
+
 func saveState(db dbm.DB, state State, key []byte) {
 	nextHeight := state.LastBlockHeight + 1
-	saveValidatorsInfo(db, nextHeight, state.LastHeightValidatorsChanged, state.Validators)
+	// If first block, save validators for block 1.
+	if nextHeight == 1 {
+		// This extra logic due to Tendermint validator set changes being delayed 1 block.
+		// It may get overwritten due to InitChain validator updates.
+		lastHeightVoteChanged := int64(1)
+		saveValidatorsInfo(db, nextHeight, lastHeightVoteChanged, state.Validators)
+	}
+	// Save next validators.
+	saveValidatorsInfo(db, nextHeight+1, state.LastHeightValidatorsChanged, state.NextValidators)
+	// Save next consensus params.
 	saveConsensusParamsInfo(db, nextHeight, state.LastHeightConsensusParamsChanged, state.ConsensusParams)
-	db.SetSync(stateKey, state.Bytes())
+	db.SetSync(key, state.Bytes())
 }
 
 //------------------------------------------------------------------------
@@ -98,8 +115,9 @@ func saveState(db dbm.DB, state State, key []byte) {
 // of the various ABCI calls during block processing.
 // It is persisted to disk for each height before calling Commit.
 type ABCIResponses struct {
-	DeliverTx []*abci.ResponseDeliverTx
-	EndBlock  *abci.ResponseEndBlock
+	DeliverTx  []*abci.ResponseDeliverTx
+	EndBlock   *abci.ResponseEndBlock
+	BeginBlock *abci.ResponseBeginBlock
 }
 
 // NewABCIResponses returns a new ABCIResponses
@@ -137,7 +155,7 @@ func LoadABCIResponses(db dbm.DB, height int64) (*ABCIResponses, error) {
 	err := cdc.UnmarshalBinaryBare(buf, abciResponses)
 	if err != nil {
 		// DATA HAS BEEN CORRUPTED OR THE SPEC HAS CHANGED
-		cmn.Exit(cmn.Fmt(`LoadABCIResponses: Data has been corrupted or its spec has
+		cmn.Exit(fmt.Sprintf(`LoadABCIResponses: Data has been corrupted or its spec has
                 changed: %v\n`, err))
 	}
 	// TODO: ensure that buf is completely read.
@@ -184,12 +202,14 @@ func LoadValidators(db dbm.DB, height int64) (*types.ValidatorSet, error) {
 				),
 			)
 		}
+		valInfo2.ValidatorSet.IncrementProposerPriority(int(height - valInfo.LastHeightChanged)) // mutate
 		valInfo = valInfo2
 	}
 
 	return valInfo.ValidatorSet, nil
 }
 
+// CONTRACT: Returned ValidatorsInfo can be mutated.
 func loadValidatorsInfo(db dbm.DB, height int64) *ValidatorsInfo {
 	buf := db.Get(calcValidatorsKey(height))
 	if len(buf) == 0 {
@@ -200,7 +220,7 @@ func loadValidatorsInfo(db dbm.DB, height int64) *ValidatorsInfo {
 	err := cdc.UnmarshalBinaryBare(buf, v)
 	if err != nil {
 		// DATA HAS BEEN CORRUPTED OR THE SPEC HAS CHANGED
-		cmn.Exit(cmn.Fmt(`LoadValidators: Data has been corrupted or its spec has changed:
+		cmn.Exit(fmt.Sprintf(`LoadValidators: Data has been corrupted or its spec has changed:
                 %v\n`, err))
 	}
 	// TODO: ensure that buf is completely read.
@@ -208,18 +228,22 @@ func loadValidatorsInfo(db dbm.DB, height int64) *ValidatorsInfo {
 	return v
 }
 
-// saveValidatorsInfo persists the validator set for the next block to disk.
+// saveValidatorsInfo persists the validator set.
+// `height` is the effective height for which the validator is responsible for signing.
 // It should be called from s.Save(), right before the state itself is persisted.
 // If the validator set did not change after processing the latest block,
 // only the last height for which the validators changed is persisted.
-func saveValidatorsInfo(db dbm.DB, nextHeight, changeHeight int64, valSet *types.ValidatorSet) {
-	valInfo := &ValidatorsInfo{
-		LastHeightChanged: changeHeight,
+func saveValidatorsInfo(db dbm.DB, height, lastHeightChanged int64, valSet *types.ValidatorSet) {
+	if lastHeightChanged > height {
+		panic("LastHeightChanged cannot be greater than ValidatorsInfo height")
 	}
-	if changeHeight == nextHeight {
+	valInfo := &ValidatorsInfo{
+		LastHeightChanged: lastHeightChanged,
+	}
+	if lastHeightChanged == height {
 		valInfo.ValidatorSet = valSet
 	}
-	db.Set(calcValidatorsKey(nextHeight), valInfo.Bytes())
+	db.Set(calcValidatorsKey(height), valInfo.Bytes())
 }
 
 //-----------------------------------------------------------------------------
@@ -244,7 +268,7 @@ func LoadConsensusParams(db dbm.DB, height int64) (types.ConsensusParams, error)
 		return empty, ErrNoConsensusParamsForHeight{height}
 	}
 
-	if paramsInfo.ConsensusParams == empty {
+	if paramsInfo.ConsensusParams.Equals(&empty) {
 		paramsInfo2 := loadConsensusParamsInfo(db, paramsInfo.LastHeightChanged)
 		if paramsInfo2 == nil {
 			panic(
@@ -271,7 +295,7 @@ func loadConsensusParamsInfo(db dbm.DB, height int64) *ConsensusParamsInfo {
 	err := cdc.UnmarshalBinaryBare(buf, paramsInfo)
 	if err != nil {
 		// DATA HAS BEEN CORRUPTED OR THE SPEC HAS CHANGED
-		cmn.Exit(cmn.Fmt(`LoadConsensusParams: Data has been corrupted or its spec has changed:
+		cmn.Exit(fmt.Sprintf(`LoadConsensusParams: Data has been corrupted or its spec has changed:
                 %v\n`, err))
 	}
 	// TODO: ensure that buf is completely read.

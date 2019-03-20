@@ -57,9 +57,10 @@ func (evpool *EvidencePool) PriorityEvidence() []types.Evidence {
 	return evpool.evidenceStore.PriorityEvidence()
 }
 
-// PendingEvidence returns all uncommitted evidence.
-func (evpool *EvidencePool) PendingEvidence() []types.Evidence {
-	return evpool.evidenceStore.PendingEvidence()
+// PendingEvidence returns uncommitted evidence up to maxBytes.
+// If maxBytes is -1, all evidence is returned.
+func (evpool *EvidencePool) PendingEvidence(maxBytes int64) []types.Evidence {
+	return evpool.evidenceStore.PendingEvidence(maxBytes)
 }
 
 // State returns the current state of the evpool.
@@ -116,6 +117,14 @@ func (evpool *EvidencePool) AddEvidence(evidence types.Evidence) (err error) {
 	return nil
 }
 
+func (evpool *EvidencePool) IsCommitted(evidence types.Evidence) bool {
+	ei_ := evpool.evidenceStore.GetEvidence(evidence.Height(), evidence.Hash())
+	if ei_ != nil && ei_.Evidence != nil && ei_.Committed {
+		return true
+	}
+	return false
+}
+
 // MarkEvidenceAsCommitted marks all the evidence as committed and removes it from the queue.
 func (evpool *EvidencePool) MarkEvidenceAsCommitted(height int64, evidence []types.Evidence) {
 	// make a map of committed evidence to remove from the clist
@@ -126,7 +135,7 @@ func (evpool *EvidencePool) MarkEvidenceAsCommitted(height int64, evidence []typ
 	}
 
 	// remove committed evidence from the clist
-	maxAge := evpool.State().ConsensusParams.EvidenceParams.MaxAge
+	maxAge := evpool.State().ConsensusParams.Evidence.MaxAge
 	evpool.removeEvidence(height, maxAge, blockEvidenceMap)
 
 }

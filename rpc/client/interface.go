@@ -21,9 +21,9 @@ implementation.
 */
 
 import (
+	cmn "github.com/tendermint/tendermint/libs/common"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	"github.com/tendermint/tendermint/types"
-	cmn "github.com/tendermint/tendermint/libs/common"
 )
 
 // ABCIClient groups together the functionality that principally
@@ -92,4 +92,10 @@ type NetworkClient interface {
 // string. see tendermint/types/events.go
 type EventsClient interface {
 	types.EventBusSubscriber
+}
+
+// MempoolClient shows us data about current mempool state.
+type MempoolClient interface {
+	UnconfirmedTxs(limit int) (*ctypes.ResultUnconfirmedTxs, error)
+	NumUnconfirmedTxs() (*ctypes.ResultUnconfirmedTxs, error)
 }

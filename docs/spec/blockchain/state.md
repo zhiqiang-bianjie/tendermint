@@ -1,4 +1,4 @@
-# Tendermint State
+# State
 
 ## State
 
@@ -8,13 +8,14 @@ transactions are never included in blocks, but their Merkle roots are - the stat
 
 Note that the `State` object itself is an implementation detail, since it is never
 included in a block or gossipped over the network, and we never compute
-its hash. However, the types it contains are part of the specification, since
-their Merkle roots are included in blocks.
-
-For details on an implementation of `State` with persistence, see TODO
+its hash. Thus we do not include here details of how the `State` object is
+persisted or queried. That said, the types it contains are part of the specification, since
+their Merkle roots are included in blocks and their values are used in
+validation.
 
 ```go
 type State struct {
+    Version     Version
     LastResults []Result
     AppHash []byte
 
@@ -32,25 +33,20 @@ type State struct {
 type Result struct {
     Code uint32
     Data []byte
-    Tags []KVPair
-}
-
-type KVPair struct {
-    Key     []byte
-    Value   []byte
 }
 ```
 
 `Result` is the result of executing a transaction against the application.
-It returns a result code, an arbitrary byte array (ie. a return value),
-and a list of key-value pairs ordered by key. The key-value pairs, or tags,
-can be used to index transactions according to their "effects", which are
-represented in the tags.
+It returns a result code and an arbitrary byte array (ie. a return value).
+
+NOTE: the Result needs to be updated to include more fields returned from
+processing transactions, like gas variables and tags - see
+[issue 1007](https://github.com/tendermint/tendermint/issues/1007).
 
 ### Validator
 
 A validator is an active participant in the consensus with a public key and a voting power.
-Validator's also contain an address which is derived from the PubKey:
+Validator's also contain an address field, which is a hash digest of the PubKey.
 
 ```go
 type Validator struct {
@@ -60,7 +56,10 @@ type Validator struct {
 }
 ```
 
-The `state.Validators` and `state.LastValidators` must always by sorted by validator address,
+When hashing the Validator struct, the address is not included,
+because it is redundant with the pubkey.
+
+The `state.Validators`, `state.LastValidators`, and `state.NextValidators`, must always by sorted by validator address,
 so that there is a canonical order for computing the SimpleMerkleRoot.
 
 We also define a `TotalVotingPower` function, to return the total voting power:
@@ -75,7 +74,54 @@ func TotalVotingPower(vals []Validators) int64{
 }
 ```
 
-
 ### ConsensusParams
 
-TODO
+ConsensusParams define various limits for blockchain data structures.
+Like validator sets, they are set during genesis and can be updated by the application through ABCI.
+
+```go
+type ConsensusParams struct {
+	BlockSize
+	Evidence
+	Validator
+}
+
+type BlockSize struct {
+	MaxBytes        int64
+	MaxGas          int64
+}
+
+type Evidence struct {
+	MaxAge int64
+}
+
+type Validator struct {
+	PubKeyTypes []string
+}
+
+type ValidatorParams struct {
+	PubKeyTypes []string
+}
+```
+
+#### BlockSize
+
+The total size of a block is limited in bytes by the `ConsensusParams.BlockSize.MaxBytes`.
+Proposed blocks must be less than this size, and will be considered invalid
+otherwise.
+
+Blocks should additionally be limited by the amount of "gas" consumed by the
+transactions in the block, though this is not yet implemented.
+
+#### Evidence
+
+For evidence in a block to be valid, it must satisfy:
+
+```
+block.Header.Height - evidence.Height < ConsensusParams.Evidence.MaxAge
+```
+
+#### Validator
+
+Validators from genesis file and `ResponseEndBlock` must have pubkeys of type ∈
+`ConsensusParams.Validator.PubKeyTypes`.

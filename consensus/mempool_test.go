@@ -10,8 +10,6 @@ import (
 
 	"github.com/tendermint/tendermint/abci/example/code"
 	abci "github.com/tendermint/tendermint/abci/types"
-	cmn "github.com/tendermint/tendermint/libs/common"
-
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -29,17 +27,17 @@ func TestMempoolNoProgressUntilTxsAvailable(t *testing.T) {
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
 	startTestRound(cs, height, round)
 
-	ensureNewStep(newBlockCh) // first block gets committed
-	ensureNoNewStep(newBlockCh)
+	ensureNewEventOnChannel(newBlockCh) // first block gets committed
+	ensureNoNewEventOnChannel(newBlockCh)
 	deliverTxsRange(cs, 0, 1)
-	ensureNewStep(newBlockCh) // commit txs
-	ensureNewStep(newBlockCh) // commit updated app hash
-	ensureNoNewStep(newBlockCh)
+	ensureNewEventOnChannel(newBlockCh) // commit txs
+	ensureNewEventOnChannel(newBlockCh) // commit updated app hash
+	ensureNoNewEventOnChannel(newBlockCh)
 }
 
 func TestMempoolProgressAfterCreateEmptyBlocksInterval(t *testing.T) {
 	config := ResetConfig("consensus_mempool_txs_available_test")
-	config.Consensus.CreateEmptyBlocksInterval = int(ensureTimeout.Seconds())
+	config.Consensus.CreateEmptyBlocksInterval = ensureTimeout
 	state, privVals := randGenesisState(1, false, 10)
 	cs := newConsensusStateWithConfig(config, state, privVals[0], NewCounterApplication())
 	cs.mempool.EnableTxsAvailable()
@@ -47,9 +45,9 @@ func TestMempoolProgressAfterCreateEmptyBlocksInterval(t *testing.T) {
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
 	startTestRound(cs, height, round)
 
-	ensureNewStep(newBlockCh)   // first block gets committed
-	ensureNoNewStep(newBlockCh) // then we dont make a block ...
-	ensureNewStep(newBlockCh)   // until the CreateEmptyBlocksInterval has passed
+	ensureNewEventOnChannel(newBlockCh)   // first block gets committed
+	ensureNoNewEventOnChannel(newBlockCh) // then we dont make a block ...
+	ensureNewEventOnChannel(newBlockCh)   // until the CreateEmptyBlocksInterval has passed
 }
 
 func TestMempoolProgressInHigherRound(t *testing.T) {
@@ -73,13 +71,19 @@ func TestMempoolProgressInHigherRound(t *testing.T) {
 	}
 	startTestRound(cs, height, round)
 
-	ensureNewStep(newRoundCh) // first round at first height
-	ensureNewStep(newBlockCh) // first block gets committed
-	ensureNewStep(newRoundCh) // first round at next height
-	deliverTxsRange(cs, 0, 1) // we deliver txs, but dont set a proposal so we get the next round
-	<-timeoutCh
-	ensureNewStep(newRoundCh) // wait for the next round
-	ensureNewStep(newBlockCh) // now we can commit the block
+	ensureNewRound(newRoundCh, height, round) // first round at first height
+	ensureNewEventOnChannel(newBlockCh)       // first block gets committed
+
+	height = height + 1 // moving to the next height
+	round = 0
+
+	ensureNewRound(newRoundCh, height, round) // first round at next height
+	deliverTxsRange(cs, 0, 1)                 // we deliver txs, but dont set a proposal so we get the next round
+	ensureNewTimeout(timeoutCh, height, round, cs.config.TimeoutPropose.Nanoseconds())
+
+	round = round + 1                         // moving to the next round
+	ensureNewRound(newRoundCh, height, round) // wait for the next round
+	ensureNewEventOnChannel(newBlockCh)       // now we can commit the block
 }
 
 func deliverTxsRange(cs *ConsensusState, start, end int) {
@@ -89,7 +93,7 @@ func deliverTxsRange(cs *ConsensusState, start, end int) {
 		binary.BigEndian.PutUint64(txBytes, uint64(i))
 		err := cs.mempool.CheckTx(txBytes, nil)
 		if err != nil {
-			panic(cmn.Fmt("Error after CheckTx: %v", err))
+			panic(fmt.Sprintf("Error after CheckTx: %v", err))
 		}
 	}
 }
@@ -100,7 +104,7 @@ func TestMempoolTxConcurrentWithCommit(t *testing.T) {
 	height, round := cs.Height, cs.Round
 	newBlockCh := subscribe(cs.eventBus, types.EventQueryNewBlock)
 
-	NTxs := 10000
+	NTxs := 3000
 	go deliverTxsRange(cs, 0, NTxs)
 
 	startTestRound(cs, height, round)
@@ -126,7 +130,7 @@ func TestMempoolRmBadTx(t *testing.T) {
 	binary.BigEndian.PutUint64(txBytes, uint64(0))
 
 	resDeliver := app.DeliverTx(txBytes)
-	assert.False(t, resDeliver.IsErr(), cmn.Fmt("expected no error. got %v", resDeliver))
+	assert.False(t, resDeliver.IsErr(), fmt.Sprintf("expected no error. got %v", resDeliver))
 
 	resCommit := app.Commit()
 	assert.True(t, len(resCommit.Data) > 0)
@@ -149,7 +153,7 @@ func TestMempoolRmBadTx(t *testing.T) {
 
 		// check for the tx
 		for {
-			txs := cs.mempool.Reap(1)
+			txs := cs.mempool.ReapMaxBytesMaxGas(int64(len(txBytes)), -1)
 			if len(txs) == 0 {
 				emptyMempoolCh <- struct{}{}
 				return
@@ -190,7 +194,7 @@ func NewCounterApplication() *CounterApplication {
 }
 
 func (app *CounterApplication) Info(req abci.RequestInfo) abci.ResponseInfo {
-	return abci.ResponseInfo{Data: cmn.Fmt("txs:%v", app.txCount)}
+	return abci.ResponseInfo{Data: fmt.Sprintf("txs:%v", app.txCount)}
 }
 
 func (app *CounterApplication) DeliverTx(tx []byte) abci.ResponseDeliverTx {

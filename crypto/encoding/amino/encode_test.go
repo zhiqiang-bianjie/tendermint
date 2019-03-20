@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
+	"github.com/tendermint/tendermint/crypto/multisig"
 	"github.com/tendermint/tendermint/crypto/secp256k1"
 )
 
@@ -53,24 +54,27 @@ func ExamplePrintRegisteredTypes() {
 	//| ---- | ---- | ------ | ----- | ------ |
 	//| PubKeyEd25519 | tendermint/PubKeyEd25519 | 0x1624DE64 | 0x20 |  |
 	//| PubKeySecp256k1 | tendermint/PubKeySecp256k1 | 0xEB5AE987 | 0x21 |  |
+	//| PubKeyMultisigThreshold | tendermint/PubKeyMultisigThreshold | 0x22C1F7E2 | variable |  |
 	//| PrivKeyEd25519 | tendermint/PrivKeyEd25519 | 0xA3288910 | 0x40 |  |
 	//| PrivKeySecp256k1 | tendermint/PrivKeySecp256k1 | 0xE1B0F79B | 0x20 |  |
 }
 
 func TestKeyEncodings(t *testing.T) {
 	cases := []struct {
-		privKey           crypto.PrivKey
-		privSize, pubSize int // binary sizes
+		privKey                    crypto.PrivKey
+		privSize, pubSize, sigSize int // binary sizes
 	}{
 		{
 			privKey:  ed25519.GenPrivKey(),
 			privSize: 69,
 			pubSize:  37,
+			sigSize:  65,
 		},
 		{
 			privKey:  secp256k1.GenPrivKey(),
 			privSize: 37,
 			pubSize:  38,
+			sigSize:  65,
 		},
 	}
 
@@ -87,7 +91,7 @@ func TestKeyEncodings(t *testing.T) {
 		var sig1, sig2 []byte
 		sig1, err := tc.privKey.Sign([]byte("something"))
 		assert.NoError(t, err, "tc #%d", tcIndex)
-		checkAminoBinary(t, sig1, &sig2, -1) // Signature size changes for Secp anyways.
+		checkAminoBinary(t, sig1, &sig2, tc.sigSize)
 		assert.EqualValues(t, sig1, sig2, "tc #%d", tcIndex)
 
 		// Check (de/en)codings of PubKeys.
@@ -116,11 +120,29 @@ func TestNilEncodings(t *testing.T) {
 	var e, f crypto.PrivKey
 	checkAminoJSON(t, &e, &f, true)
 	assert.EqualValues(t, e, f)
-
 }
 
 func TestPubKeyInvalidDataProperReturnsEmpty(t *testing.T) {
 	pk, err := PubKeyFromBytes([]byte("foo"))
-	require.NotNil(t, err, "expecting a non-nil error")
-	require.Nil(t, pk, "expecting an empty public key on error")
+	require.NotNil(t, err)
+	require.Nil(t, pk)
+}
+
+func TestPubkeyAminoRoute(t *testing.T) {
+	tests := []struct {
+		key   crypto.PubKey
+		want  string
+		found bool
+	}{
+		{ed25519.PubKeyEd25519{}, ed25519.PubKeyAminoRoute, true},
+		{secp256k1.PubKeySecp256k1{}, secp256k1.PubKeyAminoRoute, true},
+		{&multisig.PubKeyMultisigThreshold{}, multisig.PubKeyMultisigThresholdAminoRoute, true},
+	}
+	for i, tc := range tests {
+		got, found := PubkeyAminoRoute(cdc, tc.key)
+		require.Equal(t, tc.found, found, "not equal on tc %d", i)
+		if tc.found {
+			require.Equal(t, tc.want, got, "not equal on tc %d", i)
+		}
+	}
 }

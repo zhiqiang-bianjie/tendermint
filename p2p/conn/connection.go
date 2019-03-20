@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -84,7 +85,15 @@ type MConnection struct {
 	errored       uint32
 	config        MConnConfig
 
-	quit       chan struct{}
+	// Closing quitSendRoutine will cause
+	// doneSendRoutine to close.
+	quitSendRoutine chan struct{}
+	doneSendRoutine chan struct{}
+
+	// used to ensure FlushStop and OnStop
+	// are safe to call concurrently.
+	stopMtx sync.Mutex
+
 	flushTimer *cmn.ThrottleTimer // flush writes as necessary but throttled.
 	pingTimer  *cmn.RepeatTimer   // send pings periodically
 
@@ -156,6 +165,7 @@ func NewMConnectionWithConfig(conn net.Conn, chDescs []*ChannelDescriptor, onRec
 		onReceive:     onReceive,
 		onError:       onError,
 		config:        config,
+		created:       time.Now(),
 	}
 
 	// Create channels
@@ -190,7 +200,8 @@ func (c *MConnection) OnStart() error {
 	if err := c.BaseService.OnStart(); err != nil {
 		return err
 	}
-	c.quit = make(chan struct{})
+	c.quitSendRoutine = make(chan struct{})
+	c.doneSendRoutine = make(chan struct{})
 	c.flushTimer = cmn.NewThrottleTimer("flush", c.config.FlushThrottle)
 	c.pingTimer = cmn.NewRepeatTimer("ping", c.config.PingInterval)
 	c.pongTimeoutCh = make(chan bool, 1)
@@ -200,15 +211,71 @@ func (c *MConnection) OnStart() error {
 	return nil
 }
 
-// OnStop implements BaseService
-func (c *MConnection) OnStop() {
+// FlushStop replicates the logic of OnStop.
+// It additionally ensures that all successful
+// .Send() calls will get flushed before closing
+// the connection.
+func (c *MConnection) FlushStop() {
+	c.stopMtx.Lock()
+	defer c.stopMtx.Unlock()
+
+	select {
+	case <-c.quitSendRoutine:
+		// already quit via OnStop
+		return
+	default:
+	}
+
 	c.BaseService.OnStop()
 	c.flushTimer.Stop()
 	c.pingTimer.Stop()
 	c.chStatsTimer.Stop()
-	if c.quit != nil {
-		close(c.quit)
+	if c.quitSendRoutine != nil {
+		close(c.quitSendRoutine)
+		// wait until the sendRoutine exits
+		// so we dont race on calling sendSomePacketMsgs
+		<-c.doneSendRoutine
 	}
+
+	// Send and flush all pending msgs.
+	// By now, IsRunning == false,
+	// so any concurrent attempts to send will fail.
+	// Since sendRoutine has exited, we can call this
+	// safely
+	eof := c.sendSomePacketMsgs()
+	for !eof {
+		eof = c.sendSomePacketMsgs()
+	}
+	c.flush()
+
+	// Now we can close the connection
+	c.conn.Close() // nolint: errcheck
+
+	// We can't close pong safely here because
+	// recvRoutine may write to it after we've stopped.
+	// Though it doesn't need to get closed at all,
+	// we close it @ recvRoutine.
+
+	// c.Stop()
+}
+
+// OnStop implements BaseService
+func (c *MConnection) OnStop() {
+	c.stopMtx.Lock()
+	defer c.stopMtx.Unlock()
+
+	select {
+	case <-c.quitSendRoutine:
+		// already quit via FlushStop
+		return
+	default:
+	}
+
+	c.BaseService.OnStop()
+	c.flushTimer.Stop()
+	c.pingTimer.Stop()
+	c.chStatsTimer.Stop()
+	close(c.quitSendRoutine)
 	c.conn.Close() // nolint: errcheck
 
 	// We can't close pong safely here because
@@ -257,7 +324,7 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 	// Send message to channel.
 	channel, ok := c.channelsIdx[chID]
 	if !ok {
-		c.Logger.Error(cmn.Fmt("Cannot send bytes, unknown channel %X", chID))
+		c.Logger.Error(fmt.Sprintf("Cannot send bytes, unknown channel %X", chID))
 		return false
 	}
 
@@ -269,7 +336,7 @@ func (c *MConnection) Send(chID byte, msgBytes []byte) bool {
 		default:
 		}
 	} else {
-		c.Logger.Error("Send failed", "channel", chID, "conn", c, "msgBytes", fmt.Sprintf("%X", msgBytes))
+		c.Logger.Debug("Send failed", "channel", chID, "conn", c, "msgBytes", fmt.Sprintf("%X", msgBytes))
 	}
 	return success
 }
@@ -286,7 +353,7 @@ func (c *MConnection) TrySend(chID byte, msgBytes []byte) bool {
 	// Send message to channel.
 	channel, ok := c.channelsIdx[chID]
 	if !ok {
-		c.Logger.Error(cmn.Fmt("Cannot send bytes, unknown channel %X", chID))
+		c.Logger.Error(fmt.Sprintf("Cannot send bytes, unknown channel %X", chID))
 		return false
 	}
 
@@ -311,7 +378,7 @@ func (c *MConnection) CanSend(chID byte) bool {
 
 	channel, ok := c.channelsIdx[chID]
 	if !ok {
-		c.Logger.Error(cmn.Fmt("Unknown channel %X", chID))
+		c.Logger.Error(fmt.Sprintf("Unknown channel %X", chID))
 		return false
 	}
 	return channel.canSend()
@@ -337,7 +404,7 @@ FOR_LOOP:
 			}
 		case <-c.pingTimer.Chan():
 			c.Logger.Debug("Send Ping")
-			_n, err = cdc.MarshalBinaryWriter(c.bufConnWriter, PacketPing{})
+			_n, err = cdc.MarshalBinaryLengthPrefixedWriter(c.bufConnWriter, PacketPing{})
 			if err != nil {
 				break SELECTION
 			}
@@ -359,13 +426,14 @@ FOR_LOOP:
 			}
 		case <-c.pong:
 			c.Logger.Debug("Send Pong")
-			_n, err = cdc.MarshalBinaryWriter(c.bufConnWriter, PacketPong{})
+			_n, err = cdc.MarshalBinaryLengthPrefixedWriter(c.bufConnWriter, PacketPong{})
 			if err != nil {
 				break SELECTION
 			}
 			c.sendMonitor.Update(int(_n))
 			c.flush()
-		case <-c.quit:
+		case <-c.quitSendRoutine:
+			close(c.doneSendRoutine)
 			break FOR_LOOP
 		case <-c.send:
 			// Send some PacketMsgs
@@ -477,7 +545,7 @@ FOR_LOOP:
 		var packet Packet
 		var _n int64
 		var err error
-		_n, err = cdc.UnmarshalBinaryReader(c.bufConnReader, &packet, int64(c._maxPacketMsgSize))
+		_n, err = cdc.UnmarshalBinaryLengthPrefixedReader(c.bufConnReader, &packet, int64(c._maxPacketMsgSize))
 		c.recvMonitor.Update(int(_n))
 		if err != nil {
 			if c.IsRunning() {
@@ -553,7 +621,7 @@ func (c *MConnection) stopPongTimer() {
 // maxPacketMsgSize returns a maximum size of PacketMsg, including the overhead
 // of amino encoding.
 func (c *MConnection) maxPacketMsgSize() int {
-	return len(cdc.MustMarshalBinary(PacketMsg{
+	return len(cdc.MustMarshalBinaryLengthPrefixed(PacketMsg{
 		ChannelID: 0x01,
 		EOF:       1,
 		Bytes:     make([]byte, c.config.MaxPacketMsgPayloadSize),
@@ -585,9 +653,9 @@ func (c *MConnection) Status() ConnectionStatus {
 		status.Channels[i] = ChannelStatus{
 			ID:                channel.desc.ID,
 			SendQueueCapacity: cap(channel.sendQueue),
-			SendQueueSize:     int(channel.sendQueueSize), // TODO use atomic
+			SendQueueSize:     int(atomic.LoadInt32(&channel.sendQueueSize)),
 			Priority:          channel.desc.Priority,
-			RecentlySent:      channel.recentlySent,
+			RecentlySent:      atomic.LoadInt64(&channel.recentlySent),
 		}
 	}
 	return status
@@ -723,8 +791,8 @@ func (ch *Channel) nextPacketMsg() PacketMsg {
 // Not goroutine-safe
 func (ch *Channel) writePacketMsgTo(w io.Writer) (n int64, err error) {
 	var packet = ch.nextPacketMsg()
-	n, err = cdc.MarshalBinaryWriter(w, packet)
-	ch.recentlySent += n
+	n, err = cdc.MarshalBinaryLengthPrefixedWriter(w, packet)
+	atomic.AddInt64(&ch.recentlySent, n)
 	return
 }
 
@@ -756,7 +824,7 @@ func (ch *Channel) recvPacketMsg(packet PacketMsg) ([]byte, error) {
 func (ch *Channel) updateStats() {
 	// Exponential decay of stats.
 	// TODO: optimize.
-	ch.recentlySent = int64(float64(ch.recentlySent) * 0.8)
+	atomic.StoreInt64(&ch.recentlySent, int64(float64(atomic.LoadInt64(&ch.recentlySent))*0.8))
 }
 
 //----------------------------------------

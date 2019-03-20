@@ -9,68 +9,67 @@ import (
 	abci "github.com/tendermint/tendermint/abci/types"
 )
 
-func newConsensusParams(blockSize, partSize int) ConsensusParams {
-	return ConsensusParams{
-		BlockSize:   BlockSize{MaxBytes: blockSize},
-		BlockGossip: BlockGossip{BlockPartSizeBytes: partSize},
-	}
-}
+var (
+	valEd25519   = []string{ABCIPubKeyTypeEd25519}
+	valSecp256k1 = []string{ABCIPubKeyTypeSecp256k1}
+)
 
 func TestConsensusParamsValidation(t *testing.T) {
 	testCases := []struct {
 		params ConsensusParams
 		valid  bool
 	}{
-		{newConsensusParams(1, 1), true},
-		{newConsensusParams(1, 0), false},
-		{newConsensusParams(0, 1), false},
-		{newConsensusParams(0, 0), false},
-		{newConsensusParams(0, 10), false},
-		{newConsensusParams(10, -1), false},
-		{newConsensusParams(47*1024*1024, 400), true},
-		{newConsensusParams(10, 400), true},
-		{newConsensusParams(100*1024*1024, 400), true},
-		{newConsensusParams(101*1024*1024, 400), false},
-		{newConsensusParams(1024*1024*1024, 400), false},
+		// test block size
+		0: {makeParams(1, 0, 1, valEd25519), true},
+		1: {makeParams(0, 0, 1, valEd25519), false},
+		2: {makeParams(47*1024*1024, 0, 1, valEd25519), true},
+		3: {makeParams(10, 0, 1, valEd25519), true},
+		4: {makeParams(100*1024*1024, 0, 1, valEd25519), true},
+		5: {makeParams(101*1024*1024, 0, 1, valEd25519), false},
+		6: {makeParams(1024*1024*1024, 0, 1, valEd25519), false},
+		7: {makeParams(1024*1024*1024, 0, -1, valEd25519), false},
+		// test evidence age
+		8: {makeParams(1, 0, 0, valEd25519), false},
+		9: {makeParams(1, 0, -1, valEd25519), false},
+		// test no pubkey type provided
+		10: {makeParams(1, 0, 1, []string{}), false},
+		// test invalid pubkey type provided
+		11: {makeParams(1, 0, 1, []string{"potatoes make good pubkeys"}), false},
 	}
-	for _, testCase := range testCases {
-		if testCase.valid {
-			assert.NoError(t, testCase.params.Validate(), "expected no error for valid params")
+	for i, tc := range testCases {
+		if tc.valid {
+			assert.NoErrorf(t, tc.params.Validate(), "expected no error for valid params (#%d)", i)
 		} else {
-			assert.Error(t, testCase.params.Validate(), "expected error for non valid params")
+			assert.Errorf(t, tc.params.Validate(), "expected error for non valid params (#%d)", i)
 		}
 	}
 }
 
-func makeParams(blockBytes, blockTx, blockGas, txBytes,
-	txGas, partSize int) ConsensusParams {
-
+func makeParams(blockBytes, blockGas, evidenceAge int64, pubkeyTypes []string) ConsensusParams {
 	return ConsensusParams{
-		BlockSize: BlockSize{
+		BlockSize: BlockSizeParams{
 			MaxBytes: blockBytes,
-			MaxTxs:   blockTx,
-			MaxGas:   int64(blockGas),
+			MaxGas:   blockGas,
 		},
-		TxSize: TxSize{
-			MaxBytes: txBytes,
-			MaxGas:   int64(txGas),
+		Evidence: EvidenceParams{
+			MaxAge: evidenceAge,
 		},
-		BlockGossip: BlockGossip{
-			BlockPartSizeBytes: partSize,
+		Validator: ValidatorParams{
+			PubKeyTypes: pubkeyTypes,
 		},
 	}
 }
 
 func TestConsensusParamsHash(t *testing.T) {
 	params := []ConsensusParams{
-		makeParams(1, 2, 3, 4, 5, 6),
-		makeParams(7, 2, 3, 4, 5, 6),
-		makeParams(1, 7, 3, 4, 5, 6),
-		makeParams(1, 2, 7, 4, 5, 6),
-		makeParams(1, 2, 3, 7, 5, 6),
-		makeParams(1, 2, 3, 4, 7, 6),
-		makeParams(1, 2, 3, 4, 5, 7),
-		makeParams(6, 5, 4, 3, 2, 1),
+		makeParams(4, 2, 3, valEd25519),
+		makeParams(1, 4, 3, valEd25519),
+		makeParams(1, 2, 4, valEd25519),
+		makeParams(2, 5, 7, valEd25519),
+		makeParams(1, 7, 6, valEd25519),
+		makeParams(9, 5, 4, valEd25519),
+		makeParams(7, 8, 9, valEd25519),
+		makeParams(4, 6, 5, valEd25519),
 	}
 
 	hashes := make([][]byte, len(params))
@@ -96,47 +95,26 @@ func TestConsensusParamsUpdate(t *testing.T) {
 	}{
 		// empty updates
 		{
-			makeParams(1, 2, 3, 4, 5, 6),
+			makeParams(1, 2, 3, valEd25519),
 			&abci.ConsensusParams{},
-			makeParams(1, 2, 3, 4, 5, 6),
-		},
-		// negative BlockPartSizeBytes
-		{
-			makeParams(1, 2, 3, 4, 5, 6),
-			&abci.ConsensusParams{
-				BlockSize: &abci.BlockSize{
-					MaxBytes: -100,
-					MaxTxs:   -200,
-					MaxGas:   -300,
-				},
-				TxSize: &abci.TxSize{
-					MaxBytes: -400,
-					MaxGas:   -500,
-				},
-				BlockGossip: &abci.BlockGossip{
-					BlockPartSizeBytes: -600,
-				},
-			},
-			makeParams(1, 2, 3, 4, 5, 6),
+			makeParams(1, 2, 3, valEd25519),
 		},
 		// fine updates
 		{
-			makeParams(1, 2, 3, 4, 5, 6),
+			makeParams(1, 2, 3, valEd25519),
 			&abci.ConsensusParams{
-				BlockSize: &abci.BlockSize{
+				BlockSize: &abci.BlockSizeParams{
 					MaxBytes: 100,
-					MaxTxs:   200,
-					MaxGas:   300,
+					MaxGas:   200,
 				},
-				TxSize: &abci.TxSize{
-					MaxBytes: 400,
-					MaxGas:   500,
+				Evidence: &abci.EvidenceParams{
+					MaxAge: 300,
 				},
-				BlockGossip: &abci.BlockGossip{
-					BlockPartSizeBytes: 600,
+				Validator: &abci.ValidatorParams{
+					PubKeyTypes: valSecp256k1,
 				},
 			},
-			makeParams(100, 200, 300, 400, 500, 600),
+			makeParams(100, 200, 300, valSecp256k1),
 		},
 	}
 	for _, tc := range testCases {

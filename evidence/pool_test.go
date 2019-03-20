@@ -1,18 +1,26 @@
 package evidence
 
 import (
+	"os"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 
+	dbm "github.com/tendermint/tendermint/libs/db"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
-	dbm "github.com/tendermint/tendermint/libs/db"
+	tmtime "github.com/tendermint/tendermint/types/time"
 )
 
 var mockState = sm.State{}
+
+func TestMain(m *testing.M) {
+	types.RegisterMockEvidences(cdc)
+
+	code := m.Run()
+	os.Exit(code)
+}
 
 func initializeValidatorState(valAddr []byte, height int64) dbm.DB {
 	stateDB := dbm.NewMemDB()
@@ -25,11 +33,12 @@ func initializeValidatorState(valAddr []byte, height int64) dbm.DB {
 	}
 	state := sm.State{
 		LastBlockHeight:             0,
-		LastBlockTime:               time.Now(),
+		LastBlockTime:               tmtime.Now(),
 		Validators:                  valSet,
+		NextValidators:              valSet.CopyIncrementProposerPriority(1),
 		LastHeightValidatorsChanged: 1,
 		ConsensusParams: types.ConsensusParams{
-			EvidenceParams: types.EvidenceParams{
+			Evidence: types.EvidenceParams{
 				MaxAge: 1000000,
 			},
 		},

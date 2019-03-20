@@ -3,8 +3,8 @@ package evidence
 import (
 	"fmt"
 
-	"github.com/tendermint/tendermint/types"
 	dbm "github.com/tendermint/tendermint/libs/db"
+	"github.com/tendermint/tendermint/types"
 )
 
 /*
@@ -78,25 +78,41 @@ func NewEvidenceStore(db dbm.DB) *EvidenceStore {
 // PriorityEvidence returns the evidence from the outqueue, sorted by highest priority.
 func (store *EvidenceStore) PriorityEvidence() (evidence []types.Evidence) {
 	// reverse the order so highest priority is first
-	l := store.ListEvidence(baseKeyOutqueue)
-	l2 := make([]types.Evidence, len(l))
-	for i := range l {
-		l2[i] = l[len(l)-1-i]
+	l := store.listEvidence(baseKeyOutqueue, -1)
+	for i, j := 0, len(l)-1; i < j; i, j = i+1, j-1 {
+		l[i], l[j] = l[j], l[i]
 	}
-	return l2
+
+	return l
 }
 
-// PendingEvidence returns all known uncommitted evidence.
-func (store *EvidenceStore) PendingEvidence() (evidence []types.Evidence) {
-	return store.ListEvidence(baseKeyPending)
+// PendingEvidence returns known uncommitted evidence up to maxBytes.
+// If maxBytes is -1, all evidence is returned.
+func (store *EvidenceStore) PendingEvidence(maxBytes int64) (evidence []types.Evidence) {
+	return store.listEvidence(baseKeyPending, maxBytes)
 }
 
-// ListEvidence lists the evidence for the given prefix key.
+// listEvidence lists the evidence for the given prefix key up to maxBytes.
 // It is wrapped by PriorityEvidence and PendingEvidence for convenience.
-func (store *EvidenceStore) ListEvidence(prefixKey string) (evidence []types.Evidence) {
+// If maxBytes is -1, there's no cap on the size of returned evidence.
+func (store *EvidenceStore) listEvidence(prefixKey string, maxBytes int64) (evidence []types.Evidence) {
+	var bytes int64
+	var count int64
 	iter := dbm.IteratePrefix(store.db, []byte(prefixKey))
+	defer iter.Close()
 	for ; iter.Valid(); iter.Next() {
 		val := iter.Value()
+		count++
+		// In block validation, the evidence total size is calculated by (evidence quantity) * (maximum evidence size)
+		if maxBytes > 0 && count * int64(types.MaxEvidenceBytes) > maxBytes {
+			return evidence
+		}
+		// types.MaxEvidenceBytes must be greater than len(val)
+		// The following check might not be necessary, but to reduce risk, just keep them
+		if maxBytes > 0 && bytes+int64(len(val)) > maxBytes {
+			return evidence
+		}
+		bytes += int64(len(val))
 
 		var ei EvidenceInfo
 		err := cdc.UnmarshalBinaryBare(val, &ei)
@@ -170,6 +186,7 @@ func (store *EvidenceStore) MarkEvidenceAsCommitted(evidence types.Evidence) {
 
 	ei := store.getEvidenceInfo(evidence)
 	ei.Committed = true
+	ei.Evidence = evidence
 
 	lookupKey := keyLookup(evidence)
 	store.db.SetSync(lookupKey, cdc.MustMarshalBinaryBare(ei))

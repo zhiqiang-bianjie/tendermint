@@ -3,7 +3,6 @@ package consensus
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -18,17 +17,17 @@ import (
 
 	"github.com/tendermint/tendermint/abci/example/kvstore"
 	abci "github.com/tendermint/tendermint/abci/types"
-	crypto "github.com/tendermint/tendermint/crypto"
+	"github.com/tendermint/tendermint/crypto"
 	auto "github.com/tendermint/tendermint/libs/autofile"
-	cmn "github.com/tendermint/tendermint/libs/common"
 	dbm "github.com/tendermint/tendermint/libs/db"
+	"github.com/tendermint/tendermint/version"
 
 	cfg "github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/privval"
 	"github.com/tendermint/tendermint/proxy"
 	sm "github.com/tendermint/tendermint/state"
 	"github.com/tendermint/tendermint/types"
-	"github.com/tendermint/tendermint/libs/log"
 )
 
 var consensusReplayConfig *cfg.Config
@@ -103,14 +102,6 @@ func TestWALCrash(t *testing.T) {
 	}{
 		{"empty block",
 			func(stateDB dbm.DB, cs *ConsensusState, ctx context.Context) {},
-			1},
-		{"block with a smaller part size",
-			func(stateDB dbm.DB, cs *ConsensusState, ctx context.Context) {
-				// XXX: is there a better way to change BlockPartSizeBytes?
-				cs.state.ConsensusParams.BlockPartSizeBytes = 512
-				sm.SaveState(stateDB, cs.state)
-				go sendTxs(cs, ctx)
-			},
 			1},
 		{"many non-empty blocks",
 			func(stateDB dbm.DB, cs *ConsensusState, ctx context.Context) {
@@ -324,30 +315,23 @@ func testHandshakeReplay(t *testing.T, nBlocks int, mode uint) {
 	config := ResetConfig("proxy_test_")
 
 	walBody, err := WALWithNBlocks(NUM_BLOCKS)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	walFile := tempWALWithData(walBody)
 	config.Consensus.SetWalFile(walFile)
 
 	privVal := privval.LoadFilePV(config.PrivValidatorFile())
 
 	wal, err := NewWAL(walFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	wal.SetLogger(log.TestingLogger())
-	if err := wal.Start(); err != nil {
-		t.Fatal(err)
-	}
+	err = wal.Start()
+	require.NoError(t, err)
 	defer wal.Stop()
 
 	chain, commits, err := makeBlockchainFromWAL(wal)
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
+	require.NoError(t, err)
 
-	stateDB, state, store := stateAndStore(config, privVal.GetPubKey())
+	stateDB, state, store := stateAndStore(config, privVal.GetPubKey(), kvstore.ProtocolVersion)
 	store.chain = chain
 	store.commits = commits
 
@@ -361,19 +345,22 @@ func testHandshakeReplay(t *testing.T, nBlocks int, mode uint) {
 	if nBlocks > 0 {
 		// run nBlocks against a new client to build up the app state.
 		// use a throwaway tendermint state
-		proxyApp := proxy.NewAppConns(clientCreator2, nil)
-		stateDB, state, _ := stateAndStore(config, privVal.GetPubKey())
+		proxyApp := proxy.NewAppConns(clientCreator2)
+		stateDB, state, _ := stateAndStore(config, privVal.GetPubKey(), kvstore.ProtocolVersion)
 		buildAppStateFromChain(proxyApp, stateDB, state, chain, nBlocks, mode)
 	}
 
 	// now start the app using the handshake - it should sync
 	genDoc, _ := sm.MakeGenesisDocFromFile(config.GenesisFile())
 	handshaker := NewHandshaker(stateDB, state, store, genDoc)
-	proxyApp := proxy.NewAppConns(clientCreator2, handshaker)
+	proxyApp := proxy.NewAppConns(clientCreator2)
 	if err := proxyApp.Start(); err != nil {
 		t.Fatalf("Error starting proxy app connections: %v", err)
 	}
 	defer proxyApp.Stop()
+	if err := handshaker.Handshake(proxyApp); err != nil {
+		t.Fatalf("Error on abci handshake: %v", err)
+	}
 
 	// get the latest app hash from the app
 	res, err := proxyApp.Query().InfoSync(abci.RequestInfo{Version: ""})
@@ -399,7 +386,7 @@ func testHandshakeReplay(t *testing.T, nBlocks int, mode uint) {
 }
 
 func applyBlock(stateDB dbm.DB, st sm.State, blk *types.Block, proxyApp proxy.AppConns) sm.State {
-	testPartSize := st.ConsensusParams.BlockPartSizeBytes
+	testPartSize := types.BlockPartSizeBytes
 	blockExec := sm.NewBlockExecutor(stateDB, log.TestingLogger(), proxyApp.Consensus(), mempool, evpool)
 
 	blkID := types.BlockID{blk.Hash(), blk.MakePartSet(testPartSize).Header()}
@@ -418,7 +405,7 @@ func buildAppStateFromChain(proxyApp proxy.AppConns, stateDB dbm.DB,
 	}
 	defer proxyApp.Stop()
 
-	validators := types.TM2PB.Validators(state.Validators)
+	validators := types.TM2PB.ValidatorUpdates(state.Validators)
 	if _, err := proxyApp.Consensus().InitChainSync(abci.RequestInitChain{
 		Validators: validators,
 	}); err != nil {
@@ -449,13 +436,13 @@ func buildAppStateFromChain(proxyApp proxy.AppConns, stateDB dbm.DB,
 func buildTMStateFromChain(config *cfg.Config, stateDB dbm.DB, state sm.State, chain []*types.Block, mode uint) sm.State {
 	// run the whole chain against this client to build up the tendermint state
 	clientCreator := proxy.NewLocalClientCreator(kvstore.NewPersistentKVStoreApplication(path.Join(config.DBDir(), "1")))
-	proxyApp := proxy.NewAppConns(clientCreator, nil) // sm.NewHandshaker(config, state, store, ReplayLastBlock))
+	proxyApp := proxy.NewAppConns(clientCreator)
 	if err := proxyApp.Start(); err != nil {
 		panic(err)
 	}
 	defer proxyApp.Stop()
 
-	validators := types.TM2PB.Validators(state.Validators)
+	validators := types.TM2PB.ValidatorUpdates(state.Validators)
 	if _, err := proxyApp.Consensus().InitChainSync(abci.RequestInitChain{
 		Validators: validators,
 	}); err != nil {
@@ -494,7 +481,7 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.Commit, error) {
 		return nil, nil, err
 	}
 	if !found {
-		return nil, nil, errors.New(cmn.Fmt("WAL does not contain height %d.", 1))
+		return nil, nil, fmt.Errorf("WAL does not contain height %d.", 1)
 	}
 	defer gr.Close() // nolint: errcheck
 
@@ -526,16 +513,16 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.Commit, error) {
 			// if its not the first one, we have a full block
 			if thisBlockParts != nil {
 				var block = new(types.Block)
-				_, err = cdc.UnmarshalBinaryReader(thisBlockParts.GetReader(), block, 0)
+				_, err = cdc.UnmarshalBinaryLengthPrefixedReader(thisBlockParts.GetReader(), block, 0)
 				if err != nil {
 					panic(err)
 				}
 				if block.Height != height+1 {
-					panic(cmn.Fmt("read bad block from wal. got height %d, expected %d", block.Height, height+1))
+					panic(fmt.Sprintf("read bad block from wal. got height %d, expected %d", block.Height, height+1))
 				}
 				commitHeight := thisBlockCommit.Precommits[0].Height
 				if commitHeight != height+1 {
-					panic(cmn.Fmt("commit doesnt match. got height %d, expected %d", commitHeight, height+1))
+					panic(fmt.Sprintf("commit doesnt match. got height %d, expected %d", commitHeight, height+1))
 				}
 				blocks = append(blocks, block)
 				commits = append(commits, thisBlockCommit)
@@ -549,7 +536,7 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.Commit, error) {
 				return nil, nil, err
 			}
 		case *types.Vote:
-			if p.Type == types.VoteTypePrecommit {
+			if p.Type == types.PrecommitType {
 				thisBlockCommit = &types.Commit{
 					BlockID:    p.BlockID,
 					Precommits: []*types.Vote{p},
@@ -559,16 +546,16 @@ func makeBlockchainFromWAL(wal WAL) ([]*types.Block, []*types.Commit, error) {
 	}
 	// grab the last block too
 	var block = new(types.Block)
-	_, err = cdc.UnmarshalBinaryReader(thisBlockParts.GetReader(), block, 0)
+	_, err = cdc.UnmarshalBinaryLengthPrefixedReader(thisBlockParts.GetReader(), block, 0)
 	if err != nil {
 		panic(err)
 	}
 	if block.Height != height+1 {
-		panic(cmn.Fmt("read bad block from wal. got height %d, expected %d", block.Height, height+1))
+		panic(fmt.Sprintf("read bad block from wal. got height %d, expected %d", block.Height, height+1))
 	}
 	commitHeight := thisBlockCommit.Precommits[0].Height
 	if commitHeight != height+1 {
-		panic(cmn.Fmt("commit doesnt match. got height %d, expected %d", commitHeight, height+1))
+		panic(fmt.Sprintf("commit doesnt match. got height %d, expected %d", commitHeight, height+1))
 	}
 	blocks = append(blocks, block)
 	commits = append(commits, thisBlockCommit)
@@ -581,7 +568,7 @@ func readPieceFromWAL(msg *TimedWALMessage) interface{} {
 	case msgInfo:
 		switch msg := m.Msg.(type) {
 		case *ProposalMessage:
-			return &msg.Proposal.BlockPartsHeader
+			return &msg.Proposal.BlockID.PartsHeader
 		case *BlockPartMessage:
 			return msg.Part
 		case *VoteMessage:
@@ -595,9 +582,10 @@ func readPieceFromWAL(msg *TimedWALMessage) interface{} {
 }
 
 // fresh state and mock store
-func stateAndStore(config *cfg.Config, pubKey crypto.PubKey) (dbm.DB, sm.State, *mockBlockStore) {
+func stateAndStore(config *cfg.Config, pubKey crypto.PubKey, appVersion version.Protocol) (dbm.DB, sm.State, *mockBlockStore) {
 	stateDB := dbm.NewMemDB()
 	state, _ := sm.MakeGenesisStateFromFile(config.GenesisFile())
+	state.Version.Consensus.App = appVersion
 	store := NewMockBlockStore(config, state.ConsensusParams)
 	return stateDB, state, store
 }
@@ -622,7 +610,7 @@ func (bs *mockBlockStore) LoadBlock(height int64) *types.Block { return bs.chain
 func (bs *mockBlockStore) LoadBlockMeta(height int64) *types.BlockMeta {
 	block := bs.chain[height-1]
 	return &types.BlockMeta{
-		BlockID: types.BlockID{block.Hash(), block.MakePartSet(bs.params.BlockPartSizeBytes).Header()},
+		BlockID: types.BlockID{block.Hash(), block.MakePartSet(types.BlockPartSizeBytes).Header()},
 		Header:  block.Header,
 	}
 }
@@ -641,23 +629,26 @@ func (bs *mockBlockStore) LoadSeenCommit(height int64) *types.Commit {
 func TestInitChainUpdateValidators(t *testing.T) {
 	val, _ := types.RandValidator(true, 10)
 	vals := types.NewValidatorSet([]*types.Validator{val})
-	app := &initChainApp{vals: types.TM2PB.Validators(vals)}
+	app := &initChainApp{vals: types.TM2PB.ValidatorUpdates(vals)}
 	clientCreator := proxy.NewLocalClientCreator(app)
 
 	config := ResetConfig("proxy_test_")
 	privVal := privval.LoadFilePV(config.PrivValidatorFile())
-	stateDB, state, store := stateAndStore(config, privVal.GetPubKey())
+	stateDB, state, store := stateAndStore(config, privVal.GetPubKey(), 0x0)
 
 	oldValAddr := state.Validators.Validators[0].Address
 
 	// now start the app using the handshake - it should sync
 	genDoc, _ := sm.MakeGenesisDocFromFile(config.GenesisFile())
 	handshaker := NewHandshaker(stateDB, state, store, genDoc)
-	proxyApp := proxy.NewAppConns(clientCreator, handshaker)
+	proxyApp := proxy.NewAppConns(clientCreator)
 	if err := proxyApp.Start(); err != nil {
 		t.Fatalf("Error starting proxy app connections: %v", err)
 	}
 	defer proxyApp.Stop()
+	if err := handshaker.Handshake(proxyApp); err != nil {
+		t.Fatalf("Error on abci handshake: %v", err)
+	}
 
 	// reload the state, check the validator set was updated
 	state = sm.LoadState(stateDB)
@@ -668,7 +659,7 @@ func TestInitChainUpdateValidators(t *testing.T) {
 	assert.Equal(t, newValAddr, expectValAddr)
 }
 
-func newInitChainApp(vals []abci.Validator) *initChainApp {
+func newInitChainApp(vals []abci.ValidatorUpdate) *initChainApp {
 	return &initChainApp{
 		vals: vals,
 	}
@@ -677,7 +668,7 @@ func newInitChainApp(vals []abci.Validator) *initChainApp {
 // returns the vals on InitChain
 type initChainApp struct {
 	abci.BaseApplication
-	vals []abci.Validator
+	vals []abci.ValidatorUpdate
 }
 
 func (ica *initChainApp) InitChain(req abci.RequestInitChain) abci.ResponseInitChain {

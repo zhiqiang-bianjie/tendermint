@@ -28,8 +28,12 @@ type GoLevelDB struct {
 }
 
 func NewGoLevelDB(name string, dir string) (*GoLevelDB, error) {
+	return NewGoLevelDBWithOpts(name, dir, nil)
+}
+
+func NewGoLevelDBWithOpts(name string, dir string, o *opt.Options) (*GoLevelDB, error) {
 	dbPath := filepath.Join(dir, name+".db")
-	db, err := leveldb.OpenFile(dbPath, nil)
+	db, err := leveldb.OpenFile(dbPath, o)
 	if err != nil {
 		return nil, err
 	}
@@ -209,13 +213,13 @@ var _ Iterator = (*goLevelDBIterator)(nil)
 
 func newGoLevelDBIterator(source iterator.Iterator, start, end []byte, isReverse bool) *goLevelDBIterator {
 	if isReverse {
-		if start == nil {
+		if end == nil {
 			source.Last()
 		} else {
-			valid := source.Seek(start)
+			valid := source.Seek(end)
 			if valid {
-				soakey := source.Key() // start or after key
-				if bytes.Compare(start, soakey) < 0 {
+				eoakey := source.Key() // end or after key
+				if bytes.Compare(end, eoakey) <= 0 {
 					source.Prev()
 				}
 			} else {
@@ -261,11 +265,12 @@ func (itr *goLevelDBIterator) Valid() bool {
 	}
 
 	// If key is end or past it, invalid.
+	var start = itr.start
 	var end = itr.end
 	var key = itr.source.Key()
 
 	if itr.isReverse {
-		if end != nil && bytes.Compare(key, end) <= 0 {
+		if start != nil && bytes.Compare(key, start) < 0 {
 			itr.isInvalid = true
 			return false
 		}

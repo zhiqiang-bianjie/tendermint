@@ -77,14 +77,22 @@ moniker = "{{ .BaseConfig.Moniker }}"
 # and verifying their commits
 fast_sync = {{ .BaseConfig.FastSync }}
 
-# Database backend: leveldb | memdb
+# If the blockchain is deprecated, run node with Deprecated will
+# work in query only mode. Consensus engine and p2p gossip will be
+# shutdown
+deprecated = {{ .BaseConfig.Deprecated }}
+
+# Database backend: leveldb | memdb | cleveldb
 db_backend = "{{ .BaseConfig.DBBackend }}"
 
 # Database directory
-db_path = "{{ js .BaseConfig.DBPath }}"
+db_dir = "{{ js .BaseConfig.DBPath }}"
 
 # Output level for logging, including package level options
 log_level = "{{ .BaseConfig.LogLevel }}"
+
+# Output format: 'plain' (colored text) or 'json'
+log_format = "{{ .BaseConfig.LogFormat }}"
 
 ##### additional base config options #####
 
@@ -94,8 +102,12 @@ genesis_file = "{{ js .BaseConfig.Genesis }}"
 # Path to the JSON file containing the private key to use as a validator in the consensus protocol
 priv_validator_file = "{{ js .BaseConfig.PrivValidator }}"
 
+# TCP or UNIX socket address for Tendermint to listen on for
+# connections from an external PrivValidator process
+priv_validator_laddr = "{{ .BaseConfig.PrivValidatorListenAddr }}"
+
 # Path to the JSON file containing the private key to use for node authentication in the p2p protocol
-node_key_file = "{{ js .BaseConfig.NodeKey}}"
+node_key_file = "{{ js .BaseConfig.NodeKey }}"
 
 # Mechanism to connect to the ABCI application: socket | grpc
 abci = "{{ .BaseConfig.ABCI }}"
@@ -115,15 +127,28 @@ filter_peers = {{ .BaseConfig.FilterPeers }}
 # TCP or UNIX socket address for the RPC server to listen on
 laddr = "{{ .RPC.ListenAddress }}"
 
+# A list of origins a cross-domain request can be executed from
+# Default value '[]' disables cors support
+# Use '["*"]' to allow any origin
+cors_allowed_origins = [{{ range .RPC.CORSAllowedOrigins }}{{ printf "%q, " . }}{{end}}]
+
+# A list of methods the client is allowed to use with cross-domain requests
+cors_allowed_methods = [{{ range .RPC.CORSAllowedMethods }}{{ printf "%q, " . }}{{end}}]
+
+# A list of non simple headers the client is allowed to use with cross-domain requests
+cors_allowed_headers = [{{ range .RPC.CORSAllowedHeaders }}{{ printf "%q, " . }}{{end}}]
+
 # TCP or UNIX socket address for the gRPC server to listen on
 # NOTE: This server only supports /broadcast_tx_commit
 grpc_laddr = "{{ .RPC.GRPCListenAddress }}"
 
 # Maximum number of simultaneous connections.
 # Does not include RPC (HTTP&WebSocket) connections. See max_open_connections
-# If you want to accept more significant number than the default, make sure
+# If you want to accept a larger number than the default, make sure
 # you increase your OS limits.
 # 0 - unlimited.
+# Should be < {ulimit -Sn} - {MaxNumInboundPeers} - {MaxNumOutboundPeers} - {N of wal, db and other open files}
+# 1024 - 40 - 10 - 50 = 924 = ~900
 grpc_max_open_connections = {{ .RPC.GRPCMaxOpenConnections }}
 
 # Activate unsafe RPC commands like /dial_seeds and /unsafe_flush_mempool
@@ -131,9 +156,11 @@ unsafe = {{ .RPC.Unsafe }}
 
 # Maximum number of simultaneous connections (including WebSocket).
 # Does not include gRPC connections. See grpc_max_open_connections
-# If you want to accept more significant number than the default, make sure
+# If you want to accept a larger number than the default, make sure
 # you increase your OS limits.
 # 0 - unlimited.
+# Should be < {ulimit -Sn} - {MaxNumInboundPeers} - {MaxNumOutboundPeers} - {N of wal, db and other open files}
+# 1024 - 40 - 10 - 50 = 924 = ~900
 max_open_connections = {{ .RPC.MaxOpenConnections }}
 
 ##### peer to peer configuration options #####
@@ -161,13 +188,17 @@ upnp = {{ .P2P.UPNP }}
 addr_book_file = "{{ js .P2P.AddrBook }}"
 
 # Set true for strict address routability rules
+# Set false for private or local networks
 addr_book_strict = {{ .P2P.AddrBookStrict }}
 
-# Time to wait before flushing messages out on the connection, in ms
-flush_throttle_timeout = {{ .P2P.FlushThrottleTimeout }}
+# Maximum number of inbound peers
+max_num_inbound_peers = {{ .P2P.MaxNumInboundPeers }}
 
-# Maximum number of peers to connect to
-max_num_peers = {{ .P2P.MaxNumPeers }}
+# Maximum number of outbound peers to connect to, excluding persistent peers
+max_num_outbound_peers = {{ .P2P.MaxNumOutboundPeers }}
+
+# Time to wait before flushing messages out on the connection
+flush_throttle_timeout = "{{ .P2P.FlushThrottleTimeout }}"
 
 # Maximum size of a message packet payload, in bytes
 max_packet_msg_payload_size = {{ .P2P.MaxPacketMsgPayloadSize }}
@@ -190,11 +221,17 @@ seed_mode = {{ .P2P.SeedMode }}
 # Comma separated list of peer IDs to keep private (will not be gossiped to other peers)
 private_peer_ids = "{{ .P2P.PrivatePeerIDs }}"
 
+# Toggle to disable guard against peers connecting from the same ip.
+allow_duplicate_ip = {{ .P2P.AllowDuplicateIP }}
+
+# Peer connection configuration.
+handshake_timeout = "{{ .P2P.HandshakeTimeout }}"
+dial_timeout = "{{ .P2P.DialTimeout }}"
+
 ##### mempool configuration options #####
 [mempool]
 
 recheck = {{ .Mempool.Recheck }}
-recheck_empty = {{ .Mempool.RecheckEmpty }}
 broadcast = {{ .Mempool.Broadcast }}
 wal_dir = "{{ js .Mempool.WalPath }}"
 
@@ -209,25 +246,27 @@ cache_size = {{ .Mempool.CacheSize }}
 
 wal_file = "{{ js .Consensus.WalPath }}"
 
-# All timeouts are in milliseconds
-timeout_propose = {{ .Consensus.TimeoutPropose }}
-timeout_propose_delta = {{ .Consensus.TimeoutProposeDelta }}
-timeout_prevote = {{ .Consensus.TimeoutPrevote }}
-timeout_prevote_delta = {{ .Consensus.TimeoutPrevoteDelta }}
-timeout_precommit = {{ .Consensus.TimeoutPrecommit }}
-timeout_precommit_delta = {{ .Consensus.TimeoutPrecommitDelta }}
-timeout_commit = {{ .Consensus.TimeoutCommit }}
+timeout_propose = "{{ .Consensus.TimeoutPropose }}"
+timeout_propose_delta = "{{ .Consensus.TimeoutProposeDelta }}"
+timeout_prevote = "{{ .Consensus.TimeoutPrevote }}"
+timeout_prevote_delta = "{{ .Consensus.TimeoutPrevoteDelta }}"
+timeout_precommit = "{{ .Consensus.TimeoutPrecommit }}"
+timeout_precommit_delta = "{{ .Consensus.TimeoutPrecommitDelta }}"
+timeout_commit = "{{ .Consensus.TimeoutCommit }}"
 
 # Make progress as soon as we have all the precommits (as if TimeoutCommit = 0)
 skip_timeout_commit = {{ .Consensus.SkipTimeoutCommit }}
 
-# EmptyBlocks mode and possible interval between empty blocks in seconds
+# EmptyBlocks mode and possible interval between empty blocks
 create_empty_blocks = {{ .Consensus.CreateEmptyBlocks }}
-create_empty_blocks_interval = {{ .Consensus.CreateEmptyBlocksInterval }}
+create_empty_blocks_interval = "{{ .Consensus.CreateEmptyBlocksInterval }}"
 
-# Reactor sleep duration parameters are in milliseconds
-peer_gossip_sleep_duration = {{ .Consensus.PeerGossipSleepDuration }}
-peer_query_maj23_sleep_duration = {{ .Consensus.PeerQueryMaj23SleepDuration }}
+# Reactor sleep duration parameters
+peer_gossip_sleep_duration = "{{ .Consensus.PeerGossipSleepDuration }}"
+peer_query_maj23_sleep_duration = "{{ .Consensus.PeerQueryMaj23SleepDuration }}"
+
+# Block time parameters. Corresponds to the minimum time increment between consecutive blocks.
+blocktime_iota = "{{ .Consensus.BlockTimeIota }}"
 
 ##### transactions indexer configuration options #####
 [tx_index]
@@ -235,20 +274,25 @@ peer_query_maj23_sleep_duration = {{ .Consensus.PeerQueryMaj23SleepDuration }}
 # What indexer to use for transactions
 #
 # Options:
-#   1) "null" (default)
-#   2) "kv" - the simplest possible indexer, backed by key-value storage (defaults to levelDB; see DBBackend).
+#   1) "null"
+#   2) "kv" (default) - the simplest possible indexer, backed by key-value storage (defaults to levelDB; see DBBackend).
 indexer = "{{ .TxIndex.Indexer }}"
 
-# Comma-separated list of tags to index (by default the only tag is tx hash)
+# Comma-separated list of tags to index (by default the only tag is "tx.hash")
+#
+# You can also index transactions by height by adding "tx.height" tag here.
 #
 # It's recommended to index only a subset of tags due to possible memory
 # bloat. This is, of course, depends on the indexer's DB and the volume of
 # transactions.
 index_tags = "{{ .TxIndex.IndexTags }}"
 
-# When set to true, tells indexer to index all tags. Note this may be not
-# desirable (see the comment above). IndexTags has a precedence over
-# IndexAllTags (i.e. when given both, IndexTags will be indexed).
+# When set to true, tells indexer to index all tags (predefined tags:
+# "tx.hash", "tx.height" and all tags from DeliverTx responses).
+#
+# Note this may be not desirable (see the comment above). IndexTags has a
+# precedence over IndexAllTags (i.e. when given both, IndexTags will be
+# indexed).
 index_all_tags = {{ .TxIndex.IndexAllTags }}
 
 ##### instrumentation configuration options #####
@@ -263,10 +307,13 @@ prometheus = {{ .Instrumentation.Prometheus }}
 prometheus_listen_addr = "{{ .Instrumentation.PrometheusListenAddr }}"
 
 # Maximum number of simultaneous connections.
-# If you want to accept more significant number than the default, make sure
+# If you want to accept a larger number than the default, make sure
 # you increase your OS limits.
 # 0 - unlimited.
 max_open_connections = {{ .Instrumentation.MaxOpenConnections }}
+
+# Instrumentation namespace
+namespace = "{{ .Instrumentation.Namespace }}"
 `
 
 /****** these are for test settings ***********/
@@ -317,7 +364,7 @@ func ResetTestRoot(testName string) *Config {
 }
 
 var testGenesis = `{
-  "genesis_time": "0001-01-01T00:00:00.000Z",
+  "genesis_time": "2018-10-10T08:20:13.695936996Z",
   "chain_id": "tendermint_test",
   "validators": [
     {

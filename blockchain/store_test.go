@@ -6,15 +6,32 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	cfg "github.com/tendermint/tendermint/config"
+	cmn "github.com/tendermint/tendermint/libs/common"
 	"github.com/tendermint/tendermint/libs/db"
+	dbm "github.com/tendermint/tendermint/libs/db"
 	"github.com/tendermint/tendermint/libs/log"
+	sm "github.com/tendermint/tendermint/state"
 
 	"github.com/tendermint/tendermint/types"
+	tmtime "github.com/tendermint/tendermint/types/time"
 )
+
+func makeStateAndBlockStore(logger log.Logger) (sm.State, *BlockStore) {
+	config := cfg.ResetTestRoot("blockchain_reactor_test")
+	// blockDB := dbm.NewDebugDB("blockDB", dbm.NewMemDB())
+	// stateDB := dbm.NewDebugDB("stateDB", dbm.NewMemDB())
+	blockDB := dbm.NewMemDB()
+	stateDB := dbm.NewMemDB()
+	state, err := sm.LoadStateFromDBOrGenesisFile(stateDB, config.GenesisFile())
+	if err != nil {
+		panic(cmn.ErrorWrap(err, "error constructing state from genesis file"))
+	}
+	return state, NewBlockStore(blockDB)
+}
 
 func TestLoadBlockStoreStateJSON(t *testing.T) {
 	db := db.NewMemDB()
@@ -49,7 +66,7 @@ func TestNewBlockStore(t *testing.T) {
 			return nil, nil
 		})
 		require.NotNil(t, panicErr, "#%d panicCauser: %q expected a panic", i, tt.data)
-		assert.Contains(t, panicErr.Error(), tt.wantErr, "#%d data: %q", i, tt.data)
+		assert.Contains(t, fmt.Sprintf("%#v", panicErr), tt.wantErr, "#%d data: %q", i, tt.data)
 	}
 
 	db.Set(blockStoreKey, nil)
@@ -65,12 +82,12 @@ func freshBlockStore() (*BlockStore, db.DB) {
 var (
 	state, _ = makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 
-	block       = makeBlock(1, state)
+	block       = makeBlock(1, state, new(types.Commit))
 	partSet     = block.MakePartSet(2)
 	part1       = partSet.GetPart(0)
 	part2       = partSet.GetPart(1)
 	seenCommit1 = &types.Commit{Precommits: []*types.Vote{{Height: 10,
-		Timestamp: time.Now().UTC()}}}
+		Timestamp: tmtime.Now()}}}
 )
 
 // TODO: This test should be simplified ...
@@ -88,10 +105,10 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	}
 
 	// save a block
-	block := makeBlock(bs.Height()+1, state)
+	block := makeBlock(bs.Height()+1, state, new(types.Commit))
 	validPartSet := block.MakePartSet(2)
 	seenCommit := &types.Commit{Precommits: []*types.Vote{{Height: 10,
-		Timestamp: time.Now().UTC()}}}
+		Timestamp: tmtime.Now()}}}
 	bs.SaveBlock(block, partSet, seenCommit)
 	require.Equal(t, bs.Height(), block.Header.Height, "expecting the new height to be changed")
 
@@ -103,7 +120,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 		Height:  1,
 		NumTxs:  100,
 		ChainID: "block_test",
-		Time:    time.Now(),
+		Time:    tmtime.Now(),
 	}
 	header2 := header1
 	header2.Height = 4
@@ -111,7 +128,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 	// End of setup, test data
 
 	commitAtH10 := &types.Commit{Precommits: []*types.Vote{{Height: 10,
-		Timestamp: time.Now().UTC()}}}
+		Timestamp: tmtime.Now()}}}
 	tuples := []struct {
 		block      *types.Block
 		parts      *types.PartSet
@@ -238,7 +255,7 @@ func TestBlockStoreSaveLoadBlock(t *testing.T) {
 		if subStr := tuple.wantPanic; subStr != "" {
 			if panicErr == nil {
 				t.Errorf("#%d: want a non-nil panic", i)
-			} else if got := panicErr.Error(); !strings.Contains(got, subStr) {
+			} else if got := fmt.Sprintf("%#v", panicErr); !strings.Contains(got, subStr) {
 				t.Errorf("#%d:\n\tgotErr: %q\nwant substring: %q", i, got, subStr)
 			}
 			continue
@@ -331,11 +348,11 @@ func TestLoadBlockMeta(t *testing.T) {
 func TestBlockFetchAtHeight(t *testing.T) {
 	state, bs := makeStateAndBlockStore(log.NewTMLogger(new(bytes.Buffer)))
 	require.Equal(t, bs.Height(), int64(0), "initially the height should be zero")
-	block := makeBlock(bs.Height()+1, state)
+	block := makeBlock(bs.Height()+1, state, new(types.Commit))
 
 	partSet := block.MakePartSet(2)
 	seenCommit := &types.Commit{Precommits: []*types.Vote{{Height: 10,
-		Timestamp: time.Now().UTC()}}}
+		Timestamp: tmtime.Now()}}}
 
 	bs.SaveBlock(block, partSet, seenCommit)
 	require.Equal(t, bs.Height(), block.Header.Height, "expecting the new height to be changed")

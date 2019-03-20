@@ -11,17 +11,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
+	"github.com/stretchr/testify/require"
 	"github.com/tendermint/tendermint/abci/example/counter"
 	"github.com/tendermint/tendermint/abci/example/kvstore"
 	abci "github.com/tendermint/tendermint/abci/types"
-	cmn "github.com/tendermint/tendermint/libs/common"
-	"github.com/tendermint/tendermint/libs/log"
-
 	cfg "github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
-
-	"github.com/stretchr/testify/require"
 )
 
 func newMempoolWithApp(cc proxy.ClientCreator) *Mempool {
@@ -66,10 +65,113 @@ func checkTxs(t *testing.T, mempool *Mempool, count int) types.Txs {
 			t.Error(err)
 		}
 		if err := mempool.CheckTx(txBytes, nil); err != nil {
-			t.Fatalf("Error after CheckTx: %v", err)
+			// Skip invalid txs.
+			// TestMempoolFilters will fail otherwise. It asserts a number of txs
+			// returned.
+			if IsPreCheckError(err) {
+				continue
+			}
+			t.Fatalf("CheckTx failed: %v while checking #%d tx", err, i)
 		}
 	}
 	return txs
+}
+
+func TestReapMaxBytesMaxGas(t *testing.T) {
+	app := kvstore.NewKVStoreApplication()
+	cc := proxy.NewLocalClientCreator(app)
+	mempool := newMempoolWithApp(cc)
+
+	// Ensure gas calculation behaves as expected
+	checkTxs(t, mempool, 1)
+	tx0 := mempool.TxsFront().Value.(*mempoolTx)
+	// assert that kv store has gas wanted = 1.
+	require.Equal(t, app.CheckTx(tx0.tx).GasWanted, int64(1), "KVStore had a gas value neq to 1")
+	require.Equal(t, tx0.gasWanted, int64(1), "transactions gas was set incorrectly")
+	// ensure each tx is 20 bytes long
+	require.Equal(t, len(tx0.tx), 20, "Tx is longer than 20 bytes")
+	mempool.Flush()
+
+	// each table driven test creates numTxsToCreate txs with checkTx, and at the end clears all remaining txs.
+	// each tx has 20 bytes + amino overhead = 21 bytes, 1 gas
+	tests := []struct {
+		numTxsToCreate int
+		maxBytes       int64
+		maxGas         int64
+		expectedNumTxs int
+	}{
+		{20, -1, -1, 20},
+		{20, -1, 0, 0},
+		{20, -1, 10, 10},
+		{20, -1, 30, 20},
+		{20, 0, -1, 0},
+		{20, 0, 10, 0},
+		{20, 10, 10, 0},
+		{20, 22, 10, 1},
+		{20, 220, -1, 10},
+		{20, 220, 5, 5},
+		{20, 220, 10, 10},
+		{20, 220, 15, 10},
+		{20, 20000, -1, 20},
+		{20, 20000, 5, 5},
+		{20, 20000, 30, 20},
+	}
+	for tcIndex, tt := range tests {
+		checkTxs(t, mempool, tt.numTxsToCreate)
+		got := mempool.ReapMaxBytesMaxGas(tt.maxBytes, tt.maxGas)
+		assert.Equal(t, tt.expectedNumTxs, len(got), "Got %d txs, expected %d, tc #%d",
+			len(got), tt.expectedNumTxs, tcIndex)
+		mempool.Flush()
+	}
+}
+
+func TestMempoolFilters(t *testing.T) {
+	app := kvstore.NewKVStoreApplication()
+	cc := proxy.NewLocalClientCreator(app)
+	mempool := newMempoolWithApp(cc)
+	emptyTxArr := []types.Tx{[]byte{}}
+
+	nopPreFilter := func(tx types.Tx) error { return nil }
+	nopPostFilter := func(tx types.Tx, res *abci.ResponseCheckTx) error { return nil }
+
+	// each table driven test creates numTxsToCreate txs with checkTx, and at the end clears all remaining txs.
+	// each tx has 20 bytes + amino overhead = 21 bytes, 1 gas
+	tests := []struct {
+		numTxsToCreate int
+		preFilter      PreCheckFunc
+		postFilter     PostCheckFunc
+		expectedNumTxs int
+	}{
+		{10, nopPreFilter, nopPostFilter, 10},
+		{10, PreCheckAminoMaxBytes(10), nopPostFilter, 0},
+		{10, PreCheckAminoMaxBytes(20), nopPostFilter, 0},
+		{10, PreCheckAminoMaxBytes(22), nopPostFilter, 10},
+		{10, nopPreFilter, PostCheckMaxGas(-1), 10},
+		{10, nopPreFilter, PostCheckMaxGas(0), 0},
+		{10, nopPreFilter, PostCheckMaxGas(1), 10},
+		{10, nopPreFilter, PostCheckMaxGas(3000), 10},
+		{10, PreCheckAminoMaxBytes(10), PostCheckMaxGas(20), 0},
+		{10, PreCheckAminoMaxBytes(30), PostCheckMaxGas(20), 10},
+		{10, PreCheckAminoMaxBytes(22), PostCheckMaxGas(1), 10},
+		{10, PreCheckAminoMaxBytes(22), PostCheckMaxGas(0), 0},
+	}
+	for tcIndex, tt := range tests {
+		mempool.Update(1, emptyTxArr, tt.preFilter, tt.postFilter)
+		checkTxs(t, mempool, tt.numTxsToCreate)
+		require.Equal(t, tt.expectedNumTxs, mempool.Size(), "mempool had the incorrect size, on test case %d", tcIndex)
+		mempool.Flush()
+	}
+}
+
+func TestMempoolUpdateAddsTxsToCache(t *testing.T) {
+	app := kvstore.NewKVStoreApplication()
+	cc := proxy.NewLocalClientCreator(app)
+	mempool := newMempoolWithApp(cc)
+	mempool.Update(1, []types.Tx{[]byte{0x01}}, nil, nil)
+	err := mempool.CheckTx([]byte{0x01}, nil)
+	if assert.Error(t, err) {
+		assert.Equal(t, ErrTxInCache, err)
+	}
 }
 
 func TestTxsAvailable(t *testing.T) {
@@ -92,7 +194,7 @@ func TestTxsAvailable(t *testing.T) {
 	// it should fire once now for the new height
 	// since there are still txs left
 	committedTxs, txs := txs[:50], txs[50:]
-	if err := mempool.Update(1, committedTxs); err != nil {
+	if err := mempool.Update(1, committedTxs, nil, nil); err != nil {
 		t.Error(err)
 	}
 	ensureFire(t, mempool.TxsAvailable(), timeoutMS)
@@ -104,7 +206,7 @@ func TestTxsAvailable(t *testing.T) {
 
 	// now call update with all the txs. it should not fire as there are no txs left
 	committedTxs = append(txs, moreTxs...)
-	if err := mempool.Update(2, committedTxs); err != nil {
+	if err := mempool.Update(2, committedTxs, nil, nil); err != nil {
 		t.Error(err)
 	}
 	ensureNoFire(t, mempool.TxsAvailable(), timeoutMS)
@@ -150,8 +252,8 @@ func TestSerialReap(t *testing.T) {
 	}
 
 	reapCheck := func(exp int) {
-		txs := mempool.Reap(-1)
-		require.Equal(t, len(txs), exp, cmn.Fmt("Expected to reap %v txs but got %v", exp, len(txs)))
+		txs := mempool.ReapMaxBytesMaxGas(-1, -1)
+		require.Equal(t, len(txs), exp, fmt.Sprintf("Expected to reap %v txs but got %v", exp, len(txs)))
 	}
 
 	updateRange := func(start, end int) {
@@ -161,7 +263,7 @@ func TestSerialReap(t *testing.T) {
 			binary.BigEndian.PutUint64(txBytes, uint64(i))
 			txs = append(txs, txBytes)
 		}
-		if err := mempool.Update(0, txs); err != nil {
+		if err := mempool.Update(0, txs, nil, nil); err != nil {
 			t.Error(err)
 		}
 	}
@@ -224,6 +326,28 @@ func TestSerialReap(t *testing.T) {
 	reapCheck(600)
 }
 
+func TestCacheRemove(t *testing.T) {
+	cache := newMapTxCache(100)
+	numTxs := 10
+	txs := make([][]byte, numTxs)
+	for i := 0; i < numTxs; i++ {
+		// probability of collision is 2**-256
+		txBytes := make([]byte, 32)
+		rand.Read(txBytes)
+		txs[i] = txBytes
+		cache.Push(txBytes)
+		// make sure its added to both the linked list and the map
+		require.Equal(t, i+1, len(cache.map_))
+		require.Equal(t, i+1, cache.list.Len())
+	}
+	for i := 0; i < numTxs; i++ {
+		cache.Remove(txs[i])
+		// make sure its removed from both the map and the linked list
+		require.Equal(t, numTxs-(i+1), len(cache.map_))
+		require.Equal(t, numTxs-(i+1), cache.list.Len())
+	}
+}
+
 func TestMempoolCloseWAL(t *testing.T) {
 	// 1. Create the temporary directory for mempool and WAL testing.
 	rootDir, err := ioutil.TempDir("", "mempool-test")
@@ -259,15 +383,12 @@ func TestMempoolCloseWAL(t *testing.T) {
 
 	// 7. Invoke CloseWAL() and ensure it discards the
 	// WAL thus any other write won't go through.
-	require.True(t, mempool.CloseWAL(), "CloseWAL should CloseWAL")
+	mempool.CloseWAL()
 	mempool.CheckTx(types.Tx([]byte("bar")), nil)
 	sum2 := checksumFile(walFilepath, t)
 	require.Equal(t, sum1, sum2, "expected no change to the WAL after invoking CloseWAL() since it was discarded")
 
-	// 8. Second CloseWAL should do nothing
-	require.False(t, mempool.CloseWAL(), "CloseWAL should CloseWAL")
-
-	// 9. Sanity check to ensure that the WAL file still exists
+	// 8. Sanity check to ensure that the WAL file still exists
 	m3, err := filepath.Glob(filepath.Join(rootDir, "*"))
 	require.Nil(t, err, "successful globbing expected")
 	require.Equal(t, 1, len(m3), "expecting the wal match in")

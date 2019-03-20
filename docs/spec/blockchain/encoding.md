@@ -1,4 +1,4 @@
-# Tendermint Encoding
+# Encoding
 
 ## Amino
 
@@ -48,33 +48,25 @@ spec](https://github.com/tendermint/go-amino#computing-the-prefix-and-disambigua
 
 In what follows, we provide the type names and prefix bytes directly.
 Notice that when encoding byte-arrays, the length of the byte-array is appended
-to the PrefixBytes. Thus the encoding of a byte array becomes `<PrefixBytes>
-<Length> <ByteArray>`. In other words, to encode any type listed below you do not need to be
+to the PrefixBytes. Thus the encoding of a byte array becomes `<PrefixBytes> <Length> <ByteArray>`. In other words, to encode any type listed below you do not need to be
 familiar with amino encoding.
 You can simply use below table and concatenate Prefix || Length (of raw bytes) || raw bytes
 ( while || stands for byte concatenation here).
 
-| Type | Name | Prefix | Length | Notes |
-| ---- | ---- | ------ | ----- | ------ |
-| PubKeyEd25519 | tendermint/PubKeyEd25519 | 0x1624DE64 | 0x20 |  |
-| PubKeySecp256k1 | tendermint/PubKeySecp256k1 | 0xEB5AE987 | 0x21 |  |
-| PrivKeyEd25519 | tendermint/PrivKeyEd25519 | 0xA3288910 | 0x40 |  |
-| PrivKeySecp256k1 | tendermint/PrivKeySecp256k1 | 0xE1B0F79B | 0x20 |  |
-| SignatureEd25519 | tendermint/SignatureEd25519 | 0x2031EA53 | 0x40 |  |
-| SignatureSecp256k1 | tendermint/SignatureSecp256k1 | 0x7FC4A495 | variable |
-|
+| Type               | Name                          | Prefix     | Length   | Notes |
+| ------------------ | ----------------------------- | ---------- | -------- | ----- |
+| PubKeyEd25519      | tendermint/PubKeyEd25519      | 0x1624DE64 | 0x20     |       |
+| PubKeySecp256k1    | tendermint/PubKeySecp256k1    | 0xEB5AE987 | 0x21     |       |
+| PrivKeyEd25519     | tendermint/PrivKeyEd25519     | 0xA3288910 | 0x40     |       |
+| PrivKeySecp256k1   | tendermint/PrivKeySecp256k1   | 0xE1B0F79B | 0x20     |       |
+| PubKeyMultisigThreshold | tendermint/PubKeyMultisigThreshold | 0x22C1F7E2 | variable |  |
 
-### Examples
+### Example
 
-1. For example, the 33-byte (or 0x21-byte in hex) Secp256k1 pubkey
-`020BD40F225A57ED383B440CF073BC5539D0341F5767D2BF2D78406D00475A2EE9`
-would be encoded as
-`EB5AE98221020BD40F225A57ED383B440CF073BC5539D0341F5767D2BF2D78406D00475A2EE9`
-
-2. For example, the variable size Secp256k1 signature (in this particular example 70 or 0x46 bytes)
-`304402201CD4B8C764D2FD8AF23ECFE6666CA8A53886D47754D951295D2D311E1FEA33BF02201E0F906BB1CF2C30EAACFFB032A7129358AFF96B9F79B06ACFFB18AC90C2ADD7`
-would be encoded as
-`16E1FEEA46304402201CD4B8C764D2FD8AF23ECFE6666CA8A53886D47754D951295D2D311E1FEA33BF02201E0F906BB1CF2C30EAACFFB032A7129358AFF96B9F79B06ACFFB18AC90C2ADD7`
+For example, the 33-byte (or 0x21-byte in hex) Secp256k1 pubkey
+   `020BD40F225A57ED383B440CF073BC5539D0341F5767D2BF2D78406D00475A2EE9`
+   would be encoded as
+   `EB5AE98721020BD40F225A57ED383B440CF073BC5539D0341F5767D2BF2D78406D00475A2EE9`
 
 ### Addresses
 
@@ -152,38 +144,36 @@ func MakeParts(obj interface{}, partSize int) []Part
 For an overview of Merkle trees, see
 [wikipedia](https://en.wikipedia.org/wiki/Merkle_tree)
 
-
 A Simple Tree is a simple compact binary tree for a static list of items. Simple Merkle trees are used in numerous places in Tendermint to compute a cryptographic digest of a data structure. In a Simple Tree, the transactions and validation signatures of a block are hashed using this simple merkle tree logic.
 
 If the number of items is not a power of two, the tree will not be full
 and some leaf nodes will be at different levels. Simple Tree tries to
 keep both sides of the tree the same size, but the left side may be one
-greater, for example: 
+greater, for example:
 
 ```
-   Simple Tree with 6 items           Simple Tree with 7 items 
-                                                        
-              *                                  *             
-             / \                                / \            
-           /     \                            /     \          
-         /         \                        /         \        
-       /             \                    /             \      
-      *               *                  *               *     
-     / \             / \                / \             / \    
-    /   \           /   \              /   \           /   \   
-   /     \         /     \            /     \         /     \  
+   Simple Tree with 6 items           Simple Tree with 7 items
+
+              *                                  *
+             / \                                / \
+           /     \                            /     \
+         /         \                        /         \
+       /             \                    /             \
+      *               *                  *               *
+     / \             / \                / \             / \
+    /   \           /   \              /   \           /   \
+   /     \         /     \            /     \         /     \
   *       h2      *       h5         *       *       *       h6
- / \             / \                / \     / \     / \        
+ / \             / \                / \     / \     / \
 h0  h1          h3  h4             h0  h1  h2  h3  h4  h5
 ```
 
-Tendermint always uses the `TMHASH` hash function, which is the first 20-bytes
-of the SHA256:
+Tendermint always uses the `TMHASH` hash function, which is equivalent to
+SHA256:
 
 ```
 func TMHASH(bz []byte) []byte {
-    shasum := SHA256(bz)
-    return shasum[:20]
+    return SHA256(bz)
 }
 ```
 
@@ -217,13 +207,12 @@ prefix) before being concatenated together and hashed.
 
 Note: we will abuse notion and invoke `SimpleMerkleRoot` with arguments of type `struct` or type `[]struct`.
 For `struct` arguments, we compute a `[][]byte` containing the hash of each
-field in the struct sorted by the hash of the field name.
+field in the struct, in the same order the fields appear in the struct.
 For `[]struct` arguments, we compute a `[][]byte` by hashing the individual `struct` elements.
 
 ### Simple Merkle Proof
 
 Proof that a leaf is in a Merkle tree consists of a simple structure:
-
 
 ```
 type SimpleProof struct {
@@ -265,25 +254,23 @@ func computeHashFromAunts(index, total int, leafHash []byte, innerHashes [][]byt
 
 The Simple Tree is used to merkelize a list of items, so to merkelize a
 (short) dictionary of key-value pairs, encode the dictionary as an
-ordered list of ``KVPair`` structs. The block hash is such a hash
-derived from all the fields of the block ``Header``. The state hash is
+ordered list of `KVPair` structs. The block hash is such a hash
+derived from all the fields of the block `Header`. The state hash is
 similarly derived.
 
 ### IAVL+ Tree
 
-Because Tendermint only uses a Simple Merkle Tree, application developers are expect to use their own Merkle tree in their applications. For example, the IAVL+ Tree - an immutable self-balancing binary tree for persisting application state is used by the [Cosmos SDK](https://github.com/cosmos/cosmos-sdk/blob/develop/docs/core/multistore.md)
+Because Tendermint only uses a Simple Merkle Tree, application developers are expect to use their own Merkle tree in their applications. For example, the IAVL+ Tree - an immutable self-balancing binary tree for persisting application state is used by the [Cosmos SDK](https://github.com/cosmos/cosmos-sdk/blob/develop/docs/sdk/core/multistore.md)
 
 ## JSON
 
 ### Amino
 
-TODO: improve this
-
 Amino also supports JSON encoding - registered types are simply encoded as:
 
 ```
 {
-  "type": "<DisfixBytes>",
+  "type": "<amino type name>",
   "value": <JSON>
 }
 ```
@@ -298,20 +285,28 @@ For instance, an ED25519 PubKey would look like:
 ```
 
 Where the `"value"` is the base64 encoding of the raw pubkey bytes, and the
-`"type"` is the full disfix bytes for Ed25519 pubkeys.
-
+`"type"` is the amino name for Ed25519 pubkeys.
 
 ### Signed Messages
 
-Signed messages (eg. votes, proposals) in the consensus are encoded using Amino-JSON, rather than in the standard binary format.
+Signed messages (eg. votes, proposals) in the consensus are encoded using Amino.
 
-When signing, the elements of a message are sorted by key and the sorted message is embedded in an
-outer JSON that includes a `chain_id` field.
-We call this encoding the CanonicalSignBytes. For instance, CanonicalSignBytes for a vote would look
-like:
+When signing, the elements of a message are re-ordered so the fixed-length fields
+are first, making it easy to quickly check the type, height, and round.
+The `ChainID` is also appended to the end.
+We call this encoding the SignBytes. For instance, SignBytes for a vote is the Amino encoding of the following struct:
 
-```json
-{"chain_id":"my-chain-id","vote":{"block_id":{"hash":DEADBEEF,"parts":{"hash":BEEFDEAD,"total":3}},"height":3,"round":2,"timestamp":1234567890, "type":2}
+```go
+type CanonicalVote struct {
+	Type      byte
+	Height    int64            `binary:"fixed64"`
+	Round     int64            `binary:"fixed64"`
+	Timestamp time.Time
+	BlockID   CanonicalBlockID
+	ChainID   string
+}
 ```
 
-Note how the fields within each level are sorted.
+The field ordering and the fixed sized encoding for the first three fields is optimized to ease parsing of SignBytes
+in HSMs. It creates fixed offsets for relevant fields that need to be read in this context.
+See [#1622](https://github.com/tendermint/tendermint/issues/1622) for more details.
