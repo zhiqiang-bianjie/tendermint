@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	crypto "github.com/tendermint/tendermint/crypto"
+	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	cmn "github.com/tendermint/tendermint/libs/common"
 	"github.com/tendermint/tendermint/libs/log"
@@ -24,7 +24,7 @@ type mockNodeInfo struct {
 
 func (ni mockNodeInfo) ID() ID                              { return ni.addr.ID }
 func (ni mockNodeInfo) NetAddress() *NetAddress             { return ni.addr }
-func (ni mockNodeInfo) ValidateBasic() error                { return nil }
+func (ni mockNodeInfo) Validate() error                     { return nil }
 func (ni mockNodeInfo) CompatibleWith(other NodeInfo) error { return nil }
 
 func AddPeerToSwitch(sw *Switch, peer Peer) {
@@ -184,7 +184,7 @@ func MakeSwitch(
 
 	// TODO: let the config be passed in?
 	sw := initSwitch(i, NewSwitch(cfg, t, opts...))
-	sw.SetLogger(log.TestingLogger())
+	sw.SetLogger(log.TestingLogger().With("switch", i))
 	sw.SetNodeKey(&nodeKey)
 
 	ni := nodeInfo.(DefaultNodeInfo)
@@ -247,17 +247,35 @@ func testNodeInfo(id ID, name string) NodeInfo {
 }
 
 func testNodeInfoWithNetwork(id ID, name, network string) NodeInfo {
+	port, err := getFreePort()
+	if err != nil {
+		panic(err)
+	}
 	return DefaultNodeInfo{
 		ProtocolVersion: defaultProtocolVersion,
 		ID_:             id,
-		ListenAddr:      fmt.Sprintf("127.0.0.1:%d", cmn.RandIntn(64512)+1023),
+		ListenAddr:      fmt.Sprintf("127.0.0.1:%d", port),
 		Network:         network,
 		Version:         "1.2.3-rc0-deadbeef",
 		Channels:        []byte{testCh},
 		Moniker:         name,
 		Other: DefaultNodeInfoOther{
 			TxIndex:    "on",
-			RPCAddress: fmt.Sprintf("127.0.0.1:%d", cmn.RandIntn(64512)+1023),
+			RPCAddress: fmt.Sprintf("127.0.0.1:%d", port),
 		},
 	}
+}
+
+func getFreePort() (int, error) {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		return 0, err
+	}
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
 }

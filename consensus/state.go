@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"time"
 
@@ -22,14 +23,10 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
-//-----------------------------------------------------------------------------
-// Config
-
 const (
-	proposalHeartbeatIntervalSeconds = 2
+	deprecatedToShutdownInterval = 30
 )
 
-//-----------------------------------------------------------------------------
 // Errors
 
 var (
@@ -81,9 +78,8 @@ type ConsensusState struct {
 	evpool     sm.EvidencePool
 
 	// internal state
-	mtx sync.RWMutex
+	mtx                       sync.RWMutex
 	cstypes.RoundState
-	triggeredTimeoutPrecommit bool
 	state                     sm.State // State until height-1.
 
 	// state changes may be triggered by: msgs from peers,
@@ -118,11 +114,13 @@ type ConsensusState struct {
 	done chan struct{}
 
 	// synchronous pubsub between consensus state and reactor.
-	// state only emits EventNewRoundStep, EventVote and EventProposalHeartbeat
+	// state only emits EventNewRoundStep and EventVote
 	evsw tmevents.EventSwitch
 
 	// for reporting metrics
 	metrics *Metrics
+
+	Deprecated bool
 }
 
 // StateOption sets an optional parameter on the ConsensusState.
@@ -159,6 +157,7 @@ func NewConsensusState(
 	cs.doPrevote = cs.defaultDoPrevote
 	cs.setProposal = cs.defaultSetProposal
 
+	cs.Deprecated = state.Deprecated
 	cs.updateToState(state)
 
 	// Don't call scheduleRound0 yet.
@@ -541,6 +540,7 @@ func (cs *ConsensusState) updateToState(state sm.State) {
 	cs.LastValidators = state.LastValidators
 
 	cs.state = state
+	cs.Deprecated = state.Deprecated
 
 	// Finally, broadcast RoundState
 	cs.newStep()
@@ -580,6 +580,7 @@ func (cs *ConsensusState) receiveRoutine(maxSteps int) {
 
 	defer func() {
 		if r := recover(); r != nil {
+			cs.metrics.ConsensusFailure.With("height", strconv.Itoa(int(cs.Height))).Add(float64(1))
 			cs.Logger.Error("CONSENSUS FAILURE!!!", "err", r, "stack", string(debug.Stack()))
 			// stop gracefully
 			//
@@ -594,6 +595,11 @@ func (cs *ConsensusState) receiveRoutine(maxSteps int) {
 	}()
 
 	for {
+		if cs.Deprecated {
+			cs.Logger.Info(fmt.Sprintf("this blockchain has been deprecated. %d seconds later, this node will be shutdown", deprecatedToShutdownInterval))
+			time.Sleep(deprecatedToShutdownInterval * time.Second)
+			cmn.Exit("Shutdown this blockchain node")
+		}
 		if maxSteps > 0 {
 			if cs.nSteps >= maxSteps {
 				cs.Logger.Info("reached max steps. exiting receive routine")
@@ -721,6 +727,7 @@ func (cs *ConsensusState) handleTxsAvailable() {
 	cs.mtx.Lock()
 	defer cs.mtx.Unlock()
 	// we only need to do this for round 0
+	cs.enterNewRound(cs.Height, 0)
 	cs.enterPropose(cs.Height, 0)
 }
 
@@ -752,7 +759,7 @@ func (cs *ConsensusState) enterNewRound(height int64, round int) {
 	validators := cs.Validators
 	if cs.Round < round {
 		validators = validators.Copy()
-		validators.IncrementAccum(round - cs.Round)
+		validators.IncrementProposerPriority(round - cs.Round)
 	}
 
 	// Setup new round
@@ -771,7 +778,7 @@ func (cs *ConsensusState) enterNewRound(height int64, round int) {
 		cs.ProposalBlockParts = nil
 	}
 	cs.Votes.SetRound(round + 1) // also track next round (round+1) to allow round-skipping
-	cs.triggeredTimeoutPrecommit = false
+	cs.TriggeredTimeoutPrecommit = false
 
 	cs.eventBus.PublishEventNewRound(cs.NewRoundEvent())
 	cs.metrics.Rounds.Set(float64(round))
@@ -785,7 +792,6 @@ func (cs *ConsensusState) enterNewRound(height int64, round int) {
 			cs.scheduleTimeout(cs.config.CreateEmptyBlocksInterval, height, round,
 				cstypes.RoundStepNewRound)
 		}
-		go cs.proposalHeartbeat(height, round)
 	} else {
 		cs.enterPropose(height, round)
 	}
@@ -800,38 +806,6 @@ func (cs *ConsensusState) needProofBlock(height int64) bool {
 
 	lastBlockMeta := cs.blockStore.LoadBlockMeta(height - 1)
 	return !bytes.Equal(cs.state.AppHash, lastBlockMeta.Header.AppHash)
-}
-
-func (cs *ConsensusState) proposalHeartbeat(height int64, round int) {
-	logger := cs.Logger.With("height", height, "round", round)
-	addr := cs.privValidator.GetAddress()
-
-	if !cs.Validators.HasAddress(addr) {
-		logger.Debug("Not sending proposalHearbeat. This node is not a validator", "addr", addr, "vals", cs.Validators)
-		return
-	}
-	counter := 0
-	valIndex, _ := cs.Validators.GetByAddress(addr)
-	chainID := cs.state.ChainID
-	for {
-		rs := cs.GetRoundState()
-		// if we've already moved on, no need to send more heartbeats
-		if rs.Step > cstypes.RoundStepNewRound || rs.Round > round || rs.Height > height {
-			return
-		}
-		heartbeat := &types.Heartbeat{
-			Height:           rs.Height,
-			Round:            rs.Round,
-			Sequence:         counter,
-			ValidatorAddress: addr,
-			ValidatorIndex:   valIndex,
-		}
-		cs.privValidator.SignHeartbeat(chainID, heartbeat)
-		cs.eventBus.PublishEventProposalHeartbeat(types.EventDataProposalHeartbeat{heartbeat})
-		cs.evsw.FireEvent(types.EventProposalHeartbeat, heartbeat)
-		counter++
-		time.Sleep(proposalHeartbeatIntervalSeconds * time.Second)
-	}
 }
 
 // Enter (CreateEmptyBlocks): from enterNewRound(height,round)
@@ -1161,12 +1135,12 @@ func (cs *ConsensusState) enterPrecommit(height int64, round int) {
 func (cs *ConsensusState) enterPrecommitWait(height int64, round int) {
 	logger := cs.Logger.With("height", height, "round", round)
 
-	if cs.Height != height || round < cs.Round || (cs.Round == round && cs.triggeredTimeoutPrecommit) {
+	if cs.Height != height || round < cs.Round || (cs.Round == round && cs.TriggeredTimeoutPrecommit) {
 		logger.Debug(
 			fmt.Sprintf(
 				"enterPrecommitWait(%v/%v): Invalid args. "+
 					"Current state is Height/Round: %v/%v/, triggeredTimeoutPrecommit:%v",
-				height, round, cs.Height, cs.Round, cs.triggeredTimeoutPrecommit))
+				height, round, cs.Height, cs.Round, cs.TriggeredTimeoutPrecommit))
 		return
 	}
 	if !cs.Votes.Precommits(round).HasTwoThirdsAny() {
@@ -1176,7 +1150,7 @@ func (cs *ConsensusState) enterPrecommitWait(height int64, round int) {
 
 	defer func() {
 		// Done enterPrecommitWait:
-		cs.triggeredTimeoutPrecommit = true
+		cs.TriggeredTimeoutPrecommit = true
 		cs.newStep()
 	}()
 

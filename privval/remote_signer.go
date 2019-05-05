@@ -56,7 +56,7 @@ func (sc *RemoteSignerClient) getPubKey() (crypto.PubKey, error) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
-	err := writeMsg(sc.conn, &PubKeyMsg{})
+	err := writeMsg(sc.conn, &PubKeyRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (sc *RemoteSignerClient) getPubKey() (crypto.PubKey, error) {
 		return nil, err
 	}
 
-	return res.(*PubKeyMsg).PubKey, nil
+	return res.(*PubKeyResponse).PubKey, nil
 }
 
 // SignVote implements PrivValidator.
@@ -125,35 +125,6 @@ func (sc *RemoteSignerClient) SignProposal(
 	return nil
 }
 
-// SignHeartbeat implements PrivValidator.
-func (sc *RemoteSignerClient) SignHeartbeat(
-	chainID string,
-	heartbeat *types.Heartbeat,
-) error {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
-
-	err := writeMsg(sc.conn, &SignHeartbeatRequest{Heartbeat: heartbeat})
-	if err != nil {
-		return err
-	}
-
-	res, err := readMsg(sc.conn)
-	if err != nil {
-		return err
-	}
-	resp, ok := res.(*SignedHeartbeatResponse)
-	if !ok {
-		return ErrUnexpectedResponse
-	}
-	if resp.Error != nil {
-		return resp.Error
-	}
-	*heartbeat = *resp.Heartbeat
-
-	return nil
-}
-
 // Ping is used to check connection health.
 func (sc *RemoteSignerClient) Ping() error {
 	sc.lock.Lock()
@@ -181,20 +152,23 @@ type RemoteSignerMsg interface{}
 
 func RegisterRemoteSignerMsg(cdc *amino.Codec) {
 	cdc.RegisterInterface((*RemoteSignerMsg)(nil), nil)
-	cdc.RegisterConcrete(&PubKeyMsg{}, "tendermint/remotesigner/PubKeyMsg", nil)
+	cdc.RegisterConcrete(&PubKeyRequest{}, "tendermint/remotesigner/PubKeyRequest", nil)
+	cdc.RegisterConcrete(&PubKeyResponse{}, "tendermint/remotesigner/PubKeyResponse", nil)
 	cdc.RegisterConcrete(&SignVoteRequest{}, "tendermint/remotesigner/SignVoteRequest", nil)
 	cdc.RegisterConcrete(&SignedVoteResponse{}, "tendermint/remotesigner/SignedVoteResponse", nil)
 	cdc.RegisterConcrete(&SignProposalRequest{}, "tendermint/remotesigner/SignProposalRequest", nil)
 	cdc.RegisterConcrete(&SignedProposalResponse{}, "tendermint/remotesigner/SignedProposalResponse", nil)
-	cdc.RegisterConcrete(&SignHeartbeatRequest{}, "tendermint/remotesigner/SignHeartbeatRequest", nil)
-	cdc.RegisterConcrete(&SignedHeartbeatResponse{}, "tendermint/remotesigner/SignedHeartbeatResponse", nil)
 	cdc.RegisterConcrete(&PingRequest{}, "tendermint/remotesigner/PingRequest", nil)
 	cdc.RegisterConcrete(&PingResponse{}, "tendermint/remotesigner/PingResponse", nil)
 }
 
-// PubKeyMsg is a PrivValidatorSocket message containing the public key.
-type PubKeyMsg struct {
+// PubKeyRequest requests the consensus public key from the remote signer.
+type PubKeyRequest struct{}
+
+// PubKeyResponse is a PrivValidatorSocket message containing the public key.
+type PubKeyResponse struct {
 	PubKey crypto.PubKey
+	Error  *RemoteSignerError
 }
 
 // SignVoteRequest is a PrivValidatorSocket message containing a vote.
@@ -216,16 +190,6 @@ type SignProposalRequest struct {
 type SignedProposalResponse struct {
 	Proposal *types.Proposal
 	Error    *RemoteSignerError
-}
-
-// SignHeartbeatRequest is a PrivValidatorSocket message containing a Heartbeat.
-type SignHeartbeatRequest struct {
-	Heartbeat *types.Heartbeat
-}
-
-type SignedHeartbeatResponse struct {
-	Heartbeat *types.Heartbeat
-	Error     *RemoteSignerError
 }
 
 // PingRequest is a PrivValidatorSocket message to keep the connection alive.
@@ -268,10 +232,10 @@ func handleRequest(req RemoteSignerMsg, chainID string, privVal types.PrivValida
 	var err error
 
 	switch r := req.(type) {
-	case *PubKeyMsg:
+	case *PubKeyRequest:
 		var p crypto.PubKey
 		p = privVal.GetPubKey()
-		res = &PubKeyMsg{p}
+		res = &PubKeyResponse{p, nil}
 	case *SignVoteRequest:
 		err = privVal.SignVote(chainID, r.Vote)
 		if err != nil {
@@ -285,13 +249,6 @@ func handleRequest(req RemoteSignerMsg, chainID string, privVal types.PrivValida
 			res = &SignedProposalResponse{nil, &RemoteSignerError{0, err.Error()}}
 		} else {
 			res = &SignedProposalResponse{r.Proposal, nil}
-		}
-	case *SignHeartbeatRequest:
-		err = privVal.SignHeartbeat(chainID, r.Heartbeat)
-		if err != nil {
-			res = &SignedHeartbeatResponse{nil, &RemoteSignerError{0, err.Error()}}
-		} else {
-			res = &SignedHeartbeatResponse{r.Heartbeat, nil}
 		}
 	case *PingRequest:
 		res = &PingResponse{}

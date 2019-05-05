@@ -77,6 +77,11 @@ moniker = "{{ .BaseConfig.Moniker }}"
 # and verifying their commits
 fast_sync = {{ .BaseConfig.FastSync }}
 
+# If the blockchain is deprecated, run node with Deprecated will
+# work in query only mode. Consensus engine and p2p gossip will be
+# shutdown
+deprecated = {{ .BaseConfig.Deprecated }}
+
 # Database backend: leveldb | memdb | cleveldb
 db_backend = "{{ .BaseConfig.DBBackend }}"
 
@@ -125,13 +130,13 @@ laddr = "{{ .RPC.ListenAddress }}"
 # A list of origins a cross-domain request can be executed from
 # Default value '[]' disables cors support
 # Use '["*"]' to allow any origin
-cors_allowed_origins = "{{ .RPC.CORSAllowedOrigins }}"
+cors_allowed_origins = [{{ range .RPC.CORSAllowedOrigins }}{{ printf "%q, " . }}{{end}}]
 
 # A list of methods the client is allowed to use with cross-domain requests
-cors_allowed_methods = "{{ .RPC.CORSAllowedMethods }}"
+cors_allowed_methods = [{{ range .RPC.CORSAllowedMethods }}{{ printf "%q, " . }}{{end}}]
 
 # A list of non simple headers the client is allowed to use with cross-domain requests
-cors_allowed_headers = "{{ .RPC.CORSAllowedHeaders }}"
+cors_allowed_headers = [{{ range .RPC.CORSAllowedHeaders }}{{ printf "%q, " . }}{{end}}]
 
 # TCP or UNIX socket address for the gRPC server to listen on
 # NOTE: This server only supports /broadcast_tx_commit
@@ -139,7 +144,7 @@ grpc_laddr = "{{ .RPC.GRPCListenAddress }}"
 
 # Maximum number of simultaneous connections.
 # Does not include RPC (HTTP&WebSocket) connections. See max_open_connections
-# If you want to accept more significant number than the default, make sure
+# If you want to accept a larger number than the default, make sure
 # you increase your OS limits.
 # 0 - unlimited.
 # Should be < {ulimit -Sn} - {MaxNumInboundPeers} - {MaxNumOutboundPeers} - {N of wal, db and other open files}
@@ -151,7 +156,7 @@ unsafe = {{ .RPC.Unsafe }}
 
 # Maximum number of simultaneous connections (including WebSocket).
 # Does not include gRPC connections. See grpc_max_open_connections
-# If you want to accept more significant number than the default, make sure
+# If you want to accept a larger number than the default, make sure
 # you increase your OS limits.
 # 0 - unlimited.
 # Should be < {ulimit -Sn} - {MaxNumInboundPeers} - {MaxNumOutboundPeers} - {N of wal, db and other open files}
@@ -269,8 +274,8 @@ blocktime_iota = "{{ .Consensus.BlockTimeIota }}"
 # What indexer to use for transactions
 #
 # Options:
-#   1) "null" (default)
-#   2) "kv" - the simplest possible indexer, backed by key-value storage (defaults to levelDB; see DBBackend).
+#   1) "null"
+#   2) "kv" (default) - the simplest possible indexer, backed by key-value storage (defaults to levelDB; see DBBackend).
 indexer = "{{ .TxIndex.Indexer }}"
 
 # Comma-separated list of tags to index (by default the only tag is "tx.hash")
@@ -302,7 +307,7 @@ prometheus = {{ .Instrumentation.Prometheus }}
 prometheus_listen_addr = "{{ .Instrumentation.PrometheusListenAddr }}"
 
 # Maximum number of simultaneous connections.
-# If you want to accept more significant number than the default, make sure
+# If you want to accept a larger number than the default, make sure
 # you increase your OS limits.
 # 0 - unlimited.
 max_open_connections = {{ .Instrumentation.MaxOpenConnections }}

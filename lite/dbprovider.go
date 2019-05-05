@@ -13,6 +13,9 @@ import (
 	"github.com/tendermint/tendermint/types"
 )
 
+var _ PersistentProvider = (*DBProvider)(nil)
+
+// DBProvider stores commits and validator sets in a DB.
 type DBProvider struct {
 	logger log.Logger
 	label  string
@@ -105,8 +108,8 @@ func (dbp *DBProvider) LatestFullCommit(chainID string, minHeight, maxHeight int
 	}
 
 	itr := dbp.db.ReverseIterator(
-		signedHeaderKey(chainID, maxHeight),
-		signedHeaderKey(chainID, minHeight-1),
+		signedHeaderKey(chainID, minHeight),
+		append(signedHeaderKey(chainID, maxHeight), byte(0x00)),
 	)
 	defer itr.Close()
 
@@ -190,8 +193,8 @@ func (dbp *DBProvider) deleteAfterN(chainID string, after int) error {
 	dbp.logger.Info("DBProvider.deleteAfterN()...", "chainID", chainID, "after", after)
 
 	itr := dbp.db.ReverseIterator(
-		signedHeaderKey(chainID, 1<<63-1),
-		signedHeaderKey(chainID, 0),
+		signedHeaderKey(chainID, 1),
+		append(signedHeaderKey(chainID, 1<<63-1), byte(0x00)),
 	)
 	defer itr.Close()
 

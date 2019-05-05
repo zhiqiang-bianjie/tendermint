@@ -1,13 +1,8 @@
-# Pending
-
-## v0.27.0
+## v0.27.4
 
 *TBD*
 
 Special thanks to external contributors on this release:
-
-Friendly reminder, we have a [bug bounty
-program](https://hackerone.com/tendermint).
 
 ### BREAKING CHANGES:
 
@@ -26,3 +21,4 @@ program](https://hackerone.com/tendermint).
 ### IMPROVEMENTS:
 
 ### BUG FIXES:
+
