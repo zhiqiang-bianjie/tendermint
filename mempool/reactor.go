@@ -111,21 +111,23 @@ func (memR *MempoolReactor) broadcastTxRoutine(peer p2p.Peer) {
 
 	var next *clist.CElement
 	for {
-		select {
-		case <-peer.Quit():
+		// In case of both next.NextWaitChan() and peer.Quit() are variable at the same time
+		if !memR.IsRunning() || !peer.IsRunning() {
 			return
-		case <-memR.Quit():
-			return
-		default:
-			// continue to broadcast transaction
 		}
 		// This happens because the CElement we were looking at got garbage
 		// collected (removed). That is, .NextWait() returned nil. Go ahead and
 		// start from the beginning.
 		if next == nil {
-			<-memR.Mempool.TxsWaitChan() // Wait until a tx is available
-			if next = memR.Mempool.TxsFront(); next == nil {
-				continue
+			select {
+			case <-memR.Mempool.TxsWaitChan(): // Wait until a tx is available
+				if next = memR.Mempool.TxsFront(); next == nil {
+					continue
+				}
+			case <-peer.Quit():
+				return
+			case <-memR.Quit():
+				return
 			}
 		}
 
