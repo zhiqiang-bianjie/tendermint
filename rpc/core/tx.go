@@ -202,7 +202,7 @@ func TxSearch(query string, prove bool, page, perPage int) (*ctypes.ResultTxSear
 	totalCount := len(hashes)
 	perPage = validatePerPage(perPage)
 	page = validatePage(page, perPage, totalCount)
-	skipCount := (page - 1) * perPage
+	skipCount := validateSkipCount(page, perPage)
 
 	apiResults := make([]*ctypes.ResultTx, cmn.MinInt(perPage, totalCount-skipCount))
 	var proof types.TxProof
