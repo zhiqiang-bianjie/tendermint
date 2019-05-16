@@ -240,16 +240,19 @@ func NewNode(config *cfg.Config,
 	fastSync := config.FastSync
 	if state.Validators.Size() == 1 {
 		addr, _ := state.Validators.GetByIndex(0)
-		if bytes.Equal(privValidator.GetAddress(), addr) {
+		privValAddr := privValidator.GetPubKey().Address()
+		if bytes.Equal(privValAddr, addr) {
 			fastSync = false
 		}
 	}
 
+	pubKey := privValidator.GetPubKey()
+	addr := pubKey.Address()
 	// Log whether this node is a validator or an observer
-	if state.Validators.HasAddress(privValidator.GetAddress()) {
-		consensusLogger.Info("This node is a validator", "addr", privValidator.GetAddress(), "pubKey", privValidator.GetPubKey())
+	if state.Validators.HasAddress(addr) {
+		consensusLogger.Info("This node is a validator", "addr", addr, "pubKey", pubKey)
 	} else {
-		consensusLogger.Info("This node is not a validator", "addr", privValidator.GetAddress(), "pubKey", privValidator.GetPubKey())
+		consensusLogger.Info("This node is not a validator", "addr", addr, "pubKey", pubKey)
 	}
 
 	csMetrics, p2pMetrics, memplMetrics, smMetrics := metricsProvider()
