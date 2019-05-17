@@ -196,11 +196,52 @@ func NewNode(config *cfg.Config,
 		return nil, fmt.Errorf("Error starting proxy app connections: %v", err)
 	}
 
+	// EventBus and IndexerService must be started before the handshake because
+	// we might need to index the txs of the replayed block as this might not have happened
+	// when the node stopped last time (i.e. the node stopped after it saved the block
+	// but before it indexed the txs, or, endblocker panicked)
+	eventBus := types.NewEventBus()
+	eventBus.SetLogger(logger.With("module", "events"))
+
+	err = eventBus.Start()
+	if err != nil {
+		return nil, err
+	}
+
+	// Transaction indexing
+	var txIndexer txindex.TxIndexer
+	switch config.TxIndex.Indexer {
+	case "kv":
+		store, err := dbProvider(&DBContext{"tx_index", config})
+		if err != nil {
+			return nil, err
+		}
+		if config.TxIndex.IndexTags != "" {
+			txIndexer = kv.NewTxIndex(store, kv.IndexTags(splitAndTrimEmpty(config.TxIndex.IndexTags, ",", " ")))
+		} else if config.TxIndex.IndexAllTags {
+			txIndexer = kv.NewTxIndex(store, kv.IndexAllTags())
+		} else {
+			txIndexer = kv.NewTxIndex(store)
+		}
+	default:
+		txIndexer = &null.TxIndex{}
+	}
+
+	indexerService := txindex.NewIndexerService(txIndexer, eventBus)
+	indexerService.SetLogger(logger.With("module", "txindex"))
+
+	err = indexerService.Start()
+	if err != nil {
+		return nil, err
+	}
+
+
 	// Create the handshaker, which calls RequestInfo, sets the AppVersion on the state,
 	// and replays any blocks as necessary to sync tendermint with the app.
 	consensusLogger := logger.With("module", "consensus")
 	handshaker := cs.NewHandshaker(stateDB, state, blockStore, genDoc)
 	handshaker.SetLogger(consensusLogger)
+	handshaker.SetEventBus(eventBus)
 	if err := handshaker.Handshake(proxyApp, &config.BaseConfig); err != nil {
 		return nil, fmt.Errorf("Error during handshake: %v", err)
 	}
@@ -240,16 +281,19 @@ func NewNode(config *cfg.Config,
 	fastSync := config.FastSync
 	if state.Validators.Size() == 1 {
 		addr, _ := state.Validators.GetByIndex(0)
-		if bytes.Equal(privValidator.GetAddress(), addr) {
+		privValAddr := privValidator.GetPubKey().Address()
+		if bytes.Equal(privValAddr, addr) {
 			fastSync = false
 		}
 	}
 
+	pubKey := privValidator.GetPubKey()
+	addr := pubKey.Address()
 	// Log whether this node is a validator or an observer
-	if state.Validators.HasAddress(privValidator.GetAddress()) {
-		consensusLogger.Info("This node is a validator", "addr", privValidator.GetAddress(), "pubKey", privValidator.GetPubKey())
+	if state.Validators.HasAddress(addr) {
+		consensusLogger.Info("This node is a validator", "addr", addr, "pubKey", pubKey)
 	} else {
-		consensusLogger.Info("This node is not a validator", "addr", privValidator.GetAddress(), "pubKey", privValidator.GetPubKey())
+		consensusLogger.Info("This node is not a validator", "addr", addr, "pubKey", pubKey)
 	}
 
 	csMetrics, p2pMetrics, memplMetrics, smMetrics := metricsProvider()
@@ -319,34 +363,9 @@ func NewNode(config *cfg.Config,
 	consensusReactor := cs.NewConsensusReactor(consensusState, fastSync, cs.ReactorMetrics(csMetrics))
 	consensusReactor.SetLogger(consensusLogger)
 
-	eventBus := types.NewEventBus()
-	eventBus.SetLogger(logger.With("module", "events"))
-
 	// services which will be publishing and/or subscribing for messages (events)
 	// consensusReactor will set it on consensusState and blockExecutor
 	consensusReactor.SetEventBus(eventBus)
-
-	// Transaction indexing
-	var txIndexer txindex.TxIndexer
-	switch config.TxIndex.Indexer {
-	case "kv":
-		store, err := dbProvider(&DBContext{"tx_index", config})
-		if err != nil {
-			return nil, err
-		}
-		if config.TxIndex.IndexTags != "" {
-			txIndexer = kv.NewTxIndex(store, kv.IndexTags(splitAndTrimEmpty(config.TxIndex.IndexTags, ",", " ")))
-		} else if config.TxIndex.IndexAllTags {
-			txIndexer = kv.NewTxIndex(store, kv.IndexAllTags())
-		} else {
-			txIndexer = kv.NewTxIndex(store)
-		}
-	default:
-		txIndexer = &null.TxIndex{}
-	}
-
-	indexerService := txindex.NewIndexerService(txIndexer, eventBus)
-	indexerService.SetLogger(logger.With("module", "txindex"))
 
 	p2pLogger := logger.With("module", "p2p")
 	nodeInfo, err := makeNodeInfo(
@@ -510,11 +529,6 @@ func (n *Node) OnStart() error {
 		time.Sleep(genTime.Sub(now))
 	}
 
-	err := n.eventBus.Start()
-	if err != nil {
-		return err
-	}
-
 	// Add private IDs to addrbook to block those peers being added
 	n.addrBook.AddPrivateIDs(splitAndTrimEmpty(n.config.P2P.PrivatePeerIDs, ",", " "))
 
@@ -563,8 +577,7 @@ func (n *Node) OnStart() error {
 		}
 	}
 
-	// start tx indexer
-	return n.indexerService.Start()
+	return nil
 }
 
 // OnStop stops the Node. It implements cmn.Service.
@@ -860,16 +873,20 @@ func createAndStartPrivValidatorSocketClient(
 	listenAddr string,
 	logger log.Logger,
 ) (types.PrivValidator, error) {
-	var pvsc types.PrivValidator
+	var listener net.Listener
 
 	protocol, address := cmn.ProtocolAndAddress(listenAddr)
+	ln, err := net.Listen(protocol, address)
+	if err != nil {
+		return nil, err
+	}
 	switch protocol {
 	case "unix":
-		pvsc = privval.NewIPCVal(logger.With("module", "privval"), address)
+		listener = privval.NewUnixListener(ln)
 	case "tcp":
 		// TODO: persist this key so external signer
 		// can actually authenticate us
-		pvsc = privval.NewTCPVal(logger.With("module", "privval"), listenAddr, ed25519.GenPrivKey())
+		listener = privval.NewTCPListener(ln, ed25519.GenPrivKey())
 	default:
 		return nil, fmt.Errorf(
 			"Wrong listen address: expected either 'tcp' or 'unix' protocols, got %s",
@@ -877,10 +894,9 @@ func createAndStartPrivValidatorSocketClient(
 		)
 	}
 
-	if pvsc, ok := pvsc.(cmn.Service); ok {
-		if err := pvsc.Start(); err != nil {
-			return nil, errors.Wrap(err, "failed to start")
-		}
+	pvsc := privval.NewSocketVal(logger.With("module", "privval"), listener)
+	if err := pvsc.Start(); err != nil {
+		return nil, errors.Wrap(err, "failed to start private validator")
 	}
 
 	return pvsc, nil

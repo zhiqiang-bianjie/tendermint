@@ -358,7 +358,7 @@ func testHandshakeReplay(t *testing.T, nBlocks int, mode uint) {
 		t.Fatalf("Error starting proxy app connections: %v", err)
 	}
 	defer proxyApp.Stop()
-	if err := handshaker.Handshake(proxyApp); err != nil {
+	if err := handshaker.Handshake(proxyApp, &config.BaseConfig); err != nil {
 		t.Fatalf("Error on abci handshake: %v", err)
 	}
 
@@ -624,6 +624,8 @@ func (bs *mockBlockStore) LoadSeenCommit(height int64) *types.Commit {
 	return bs.commits[height-1]
 }
 
+func (bs *mockBlockStore) RetreatLastBlock() {}
+
 //----------------------------------------
 
 func TestInitChainUpdateValidators(t *testing.T) {
@@ -646,7 +648,7 @@ func TestInitChainUpdateValidators(t *testing.T) {
 		t.Fatalf("Error starting proxy app connections: %v", err)
 	}
 	defer proxyApp.Stop()
-	if err := handshaker.Handshake(proxyApp); err != nil {
+	if err := handshaker.Handshake(proxyApp, &config.BaseConfig); err != nil {
 		t.Fatalf("Error on abci handshake: %v", err)
 	}
 
@@ -657,12 +659,6 @@ func TestInitChainUpdateValidators(t *testing.T) {
 	expectValAddr := val.Address
 	assert.NotEqual(t, oldValAddr, newValAddr)
 	assert.Equal(t, newValAddr, expectValAddr)
-}
-
-func newInitChainApp(vals []abci.ValidatorUpdate) *initChainApp {
-	return &initChainApp{
-		vals: vals,
-	}
 }
 
 // returns the vals on InitChain

@@ -84,13 +84,13 @@ func TestSplitAndTrimEmpty(t *testing.T) {
 	}
 }
 
-func TestNodeDelayedStop(t *testing.T) {
-	config := cfg.ResetTestRoot("node_delayed_node_test")
+func TestNodeDelayedStart(t *testing.T) {
+	config := cfg.ResetTestRoot("node_delayed_start_test")
 	now := tmtime.Now()
 
 	// create & start node
 	n, err := DefaultNewNode(config, log.TestingLogger())
-	n.GenesisDoc().GenesisTime = now.Add(5 * time.Second)
+	n.GenesisDoc().GenesisTime = now.Add(2 * time.Second)
 	require.NoError(t, err)
 
 	n.Start()
@@ -122,25 +122,25 @@ func TestNodeSetPrivValTCP(t *testing.T) {
 	config := cfg.ResetTestRoot("node_priv_val_tcp_test")
 	config.BaseConfig.PrivValidatorListenAddr = addr
 
-	rs := privval.NewRemoteSigner(
+	dialer := privval.DialTCPFn(addr, 100*time.Millisecond, ed25519.GenPrivKey())
+	pvsc := privval.NewRemoteSigner(
 		log.TestingLogger(),
 		config.ChainID(),
-		addr,
 		types.NewMockPV(),
-		ed25519.GenPrivKey(),
+		dialer,
 	)
-	privval.RemoteSignerConnDeadline(5 * time.Millisecond)(rs)
+
 	go func() {
-		err := rs.Start()
+		err := pvsc.Start()
 		if err != nil {
 			panic(err)
 		}
 	}()
-	defer rs.Stop()
+	defer pvsc.Stop()
 
 	n, err := DefaultNewNode(config, log.TestingLogger())
 	require.NoError(t, err)
-	assert.IsType(t, &privval.TCPVal{}, n.PrivValidator())
+	assert.IsType(t, &privval.SocketVal{}, n.PrivValidator())
 }
 
 // address without a protocol must result in error
@@ -161,25 +161,27 @@ func TestNodeSetPrivValIPC(t *testing.T) {
 	config := cfg.ResetTestRoot("node_priv_val_tcp_test")
 	config.BaseConfig.PrivValidatorListenAddr = "unix://" + tmpfile
 
-	rs := privval.NewIPCRemoteSigner(
+	dialer := privval.DialUnixFn(tmpfile)
+	pvsc := privval.NewRemoteSigner(
 		log.TestingLogger(),
 		config.ChainID(),
-		tmpfile,
 		types.NewMockPV(),
+		dialer,
 	)
-	privval.IPCRemoteSignerConnDeadline(3 * time.Second)(rs)
+
+	privval.RemoteSignerConnDeadline(100 * time.Millisecond)(pvsc)
 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		n, err := DefaultNewNode(config, log.TestingLogger())
 		require.NoError(t, err)
-		assert.IsType(t, &privval.IPCVal{}, n.PrivValidator())
+		assert.IsType(t, &privval.SocketVal{}, n.PrivValidator())
 	}()
 
-	err := rs.Start()
+	err := pvsc.Start()
 	require.NoError(t, err)
-	defer rs.Stop()
+	defer pvsc.Stop()
 
 	<-done
 }
