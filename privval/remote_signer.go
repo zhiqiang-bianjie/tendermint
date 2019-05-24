@@ -75,6 +75,10 @@ func getPubKey(conn net.Conn) (crypto.PubKey, error) {
 		return nil, errors.Wrap(pubKeyResp.Error, "failed to get private validator's public key")
 	}
 
+	if pubKeyResp.PubKey == nil {
+		return nil, errors.Wrap(ErrUnexpectedResponse, "public key can't be empty")
+	}
+
 	return pubKeyResp.PubKey, nil
 }
 
