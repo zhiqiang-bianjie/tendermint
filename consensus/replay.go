@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"os"
 	"reflect"
 	"runtime"
 	//"strconv"
@@ -214,7 +215,7 @@ func NewHandshaker(stateDB dbm.DB, state sm.State,
 		store:        store,
 		eventBus:     types.NopEventBus{},
 		genDoc:       genDoc,
-		logger:       log.NewNopLogger(),
+		logger:       log.NewTMLogger(log.NewSyncWriter(os.Stdout)),
 		nBlocks:      0,
 	}
 }
