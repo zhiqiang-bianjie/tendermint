@@ -23,33 +23,37 @@ type Metrics struct {
 }
 
 // PrometheusMetrics returns Metrics build using Prometheus client library.
-func PrometheusMetrics(namespace string) *Metrics {
+func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
+	var labels []string
+	for i := 0; i < len(labelsAndValues); i += 2 {
+		labels = append(labels, labelsAndValues[i])
+	}
 	return &Metrics{
 		Size: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsytem,
 			Name:      "size",
 			Help:      "Size of the mempool (number of uncommitted transactions).",
-		}, []string{}),
+		}, labels).With(labelsAndValues...),
 		TxSizeBytes: prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsytem,
 			Name:      "tx_size_bytes",
 			Help:      "Transaction sizes in bytes.",
 			Buckets:   stdprometheus.ExponentialBuckets(1, 3, 17),
-		}, []string{}),
+		}, labels).With(labelsAndValues...),
 		FailedTxs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsytem,
 			Name:      "failed_txs",
 			Help:      "Number of failed transactions.",
-		}, []string{}),
+		}, labels).With(labelsAndValues...),
 		RecheckTimes: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsytem,
 			Name:      "recheck_times",
 			Help:      "Number of times transactions are rechecked in the mempool.",
-		}, []string{}),
+		}, labels).With(labelsAndValues...),
 	}
 }
 
