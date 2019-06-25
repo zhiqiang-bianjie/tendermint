@@ -95,6 +95,6 @@ func (p *peer) Get(key string) interface{} {
 }
 
 // OriginalAddr always returns nil.
-func (p *peer) OriginalAddr() *p2p.NetAddress {
+func (p *peer) SocketAddr() *p2p.NetAddress {
 	return nil
 }

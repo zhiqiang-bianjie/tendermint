@@ -235,7 +235,6 @@ func NewNode(config *cfg.Config,
 		return nil, err
 	}
 
-
 	// Create the handshaker, which calls RequestInfo, sets the AppVersion on the state,
 	// and replays any blocks as necessary to sync tendermint with the app.
 	consensusLogger := logger.With("module", "consensus")
@@ -469,7 +468,7 @@ func NewNode(config *cfg.Config,
 	addrBook := pex.NewAddrBook(config.P2P.AddrBookFile(), config.P2P.AddrBookStrict)
 
 	// Add ourselves to addrbook to prevent dialing ourselves
-	addrBook.AddOurAddress(nodeInfo.NetAddress())
+	addrBook.AddOurAddress(sw.NetAddress())
 
 	addrBook.SetLogger(p2pLogger.With("book", config.P2P.AddrBookFile()))
 	if config.P2P.PexReactor {
