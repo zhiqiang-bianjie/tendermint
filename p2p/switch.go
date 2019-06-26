@@ -46,7 +46,7 @@ type AddrBook interface {
 	AddAddress(addr *NetAddress, src *NetAddress) error
 	AddOurAddress(*NetAddress)
 	OurAddress(*NetAddress) bool
-	MarkGood(*NetAddress)
+	MarkGood(ID)
 	RemoveAddress(*NetAddress)
 	HasAddress(*NetAddress) bool
 	Save()
@@ -84,6 +84,12 @@ type Switch struct {
 	rng *cmn.Rand // seed for randomizing dial times and orders
 
 	metrics *Metrics
+}
+
+// NetAddress returns the address the switch is listening on.
+func (sw *Switch) NetAddress() *NetAddress {
+	addr := sw.transport.NetAddress()
+	return &addr
 }
 
 // SwitchOption sets an optional parameter on the Switch.
@@ -284,13 +290,7 @@ func (sw *Switch) StopPeerForError(peer Peer, reason interface{}) {
 	sw.stopAndRemovePeer(peer, reason)
 
 	if peer.IsPersistent() {
-		addr := peer.OriginalAddr()
-		if addr == nil {
-			// FIXME: persistent peers can't be inbound right now.
-			// self-reported address for inbound persistent peers
-			addr = peer.NodeInfo().NetAddress()
-		}
-		go sw.reconnectToPeer(addr)
+		go sw.reconnectToPeer(peer.SocketAddr())
 	}
 }
 
@@ -378,7 +378,7 @@ func (sw *Switch) SetAddrBook(addrBook AddrBook) {
 // like contributed to consensus.
 func (sw *Switch) MarkPeerAsGood(peer Peer) {
 	if sw.addrBook != nil {
-		sw.addrBook.MarkGood(peer.NodeInfo().NetAddress())
+		sw.addrBook.MarkGood(peer.ID())
 	}
 }
 
@@ -395,7 +395,7 @@ func (sw *Switch) DialPeersAsync(addrBook AddrBook, peers []string, persistent b
 		sw.Logger.Error("Error in peer's address", "err", err)
 	}
 
-	ourAddr := sw.nodeInfo.NetAddress()
+	ourAddr := sw.NetAddress()
 
 	// TODO: this code feels like it's in the wrong place.
 	// The integration tests depend on the addrBook being saved
@@ -526,7 +526,7 @@ func (sw *Switch) acceptRoutine() {
 		if in >= sw.config.MaxNumInboundPeers {
 			sw.Logger.Info(
 				"Ignoring inbound connection: already have enough inbound peers",
-				"address", p.NodeInfo().NetAddress().String(),
+				"address", p.SocketAddr(),
 				"have", in,
 				"max", sw.config.MaxNumInboundPeers,
 			)
@@ -643,7 +643,7 @@ func (sw *Switch) addPeer(p Peer) error {
 		return err
 	}
 
-	p.SetLogger(sw.Logger.With("peer", p.NodeInfo().NetAddress()))
+	p.SetLogger(sw.Logger.With("peer", p.SocketAddr()))
 
 	// All good. Start peer
 	if sw.IsRunning() {
