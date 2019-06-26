@@ -8,8 +8,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	cmn "github.com/tendermint/tendermint/libs/common"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/p2p"
@@ -40,7 +40,7 @@ func TestAddrBookPickAddress(t *testing.T) {
 	assert.NotNil(t, addr, "expected an address")
 
 	// pick an address when we only have old address
-	book.MarkGood(addrSrc.addr)
+	book.MarkGood(addrSrc.addr.ID)
 	addr = book.PickAddress(0)
 	assert.NotNil(t, addr, "expected an address")
 	addr = book.PickAddress(50)
@@ -125,7 +125,7 @@ func TestAddrBookPromoteToOld(t *testing.T) {
 	// Promote half of them
 	for i, addrSrc := range randAddrs {
 		if i%2 == 0 {
-			book.MarkGood(addrSrc.addr)
+			book.MarkGood(addrSrc.addr.ID)
 		}
 	}
 
@@ -329,7 +329,7 @@ func TestAddrBookGetSelectionWithBias(t *testing.T) {
 	randAddrsLen := len(randAddrs)
 	for i, addrSrc := range randAddrs {
 		if int((float64(i)/float64(randAddrsLen))*100) >= 20 {
-			book.MarkGood(addrSrc.addr)
+			book.MarkGood(addrSrc.addr.ID)
 		}
 	}
 
@@ -571,7 +571,7 @@ func createAddrBookWithMOldAndNNewAddrs(t *testing.T, nOld, nNew int) (book *add
 	randAddrs := randNetAddressPairs(t, nOld)
 	for _, addr := range randAddrs {
 		book.AddAddress(addr.addr, addr.src)
-		book.MarkGood(addr.addr)
+		book.MarkGood(addr.addr.ID)
 	}
 
 	randAddrs = randNetAddressPairs(t, nNew)
