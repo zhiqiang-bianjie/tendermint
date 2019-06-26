@@ -274,6 +274,9 @@ func TestSwitchPeerFilterTimeout(t *testing.T) {
 
 func TestSwitchPeerFilterDuplicate(t *testing.T) {
 	sw := MakeSwitch(cfg, 1, "testing", "123.123.123", initSwitchFunc)
+	err := sw.Start()
+	defer sw.Stop()
+	require.NoError(t, err)
 
 	// simulate remote peer
 	rp := &remotePeer{PrivKey: ed25519.GenPrivKey(), Config: cfg}
@@ -294,12 +297,12 @@ func TestSwitchPeerFilterDuplicate(t *testing.T) {
 	}
 
 	err = sw.addPeer(p)
-	if err, ok := err.(ErrRejected); ok {
-		if !err.IsDuplicate() {
-			t.Errorf("expected peer to be duplicate")
+	if errRej, ok := err.(ErrRejected); ok {
+		if !errRej.IsDuplicate() {
+			t.Errorf("expected peer to be duplicate. got %v", errRej)
 		}
 	} else {
-		t.Errorf("expected ErrRejected")
+		t.Errorf("expected ErrRejected, got %v", err)
 	}
 }
 
