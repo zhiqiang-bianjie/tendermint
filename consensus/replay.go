@@ -290,7 +290,8 @@ func (h *Handshaker) ReplayBlocks(
 ) ([]byte, error) {
 	storeBlockHeight := h.store.Height()
 	stateBlockHeight := state.LastBlockHeight
-	h.logger.Info("ABCI Replay Blocks", "appHeight", appBlockHeight, "storeHeight", storeBlockHeight, "stateHeight", stateBlockHeight)
+	logger := h.logger.With("module", "state")
+	logger.Info("ABCI Replay Blocks", "appHeight", appBlockHeight, "storeHeight", storeBlockHeight, "stateHeight", stateBlockHeight)
 
 	// If appBlockHeight == 0 it means that we are at genesis and hence should send InitChain.
 	if appBlockHeight == 0 {
@@ -381,7 +382,7 @@ func (h *Handshaker) ReplayBlocks(
 			// so replayBlock with the real app.
 			// NOTE: We could instead use the cs.WAL on cs.Start,
 			// but we'd have to allow the WAL to replay a block that wrote it's #ENDHEIGHT
-			h.logger.Info("Replay last block using real app")
+			logger.Info("Replay last block using real app")
 			state, err = h.replayBlock(state, storeBlockHeight, proxyApp.Consensus())
 			return state.AppHash, err
 
@@ -392,7 +393,7 @@ func (h *Handshaker) ReplayBlocks(
 				return nil, err
 			}
 			mockApp := newMockProxyApp(appHash, abciResponses)
-			h.logger.Info("Replay last block using mock app")
+			logger.Info("Replay last block using mock app")
 			state, err = h.replayBlock(state, storeBlockHeight, mockApp)
 			return state.AppHash, err
 		}
@@ -414,6 +415,8 @@ func (h *Handshaker) replayBlocks(state sm.State, proxyApp proxy.AppConns, appBl
 	//
 	// If mutateState == true, the final block is replayed with h.replayBlock()
 
+	logger := h.logger.With("module", "state")
+
 	var appHash []byte
 	var err error
 	finalBlock := storeBlockHeight
@@ -421,7 +424,7 @@ func (h *Handshaker) replayBlocks(state sm.State, proxyApp proxy.AppConns, appBl
 		finalBlock--
 	}
 	for i := appBlockHeight + 1; i <= finalBlock; i++ {
-		h.logger.Info("Applying block", "height", i)
+		logger.Info("Applying block", "height", i)
 		block := h.store.LoadBlock(i)
 
 		if len(appHash) != 0 {
@@ -430,7 +433,7 @@ func (h *Handshaker) replayBlocks(state sm.State, proxyApp proxy.AppConns, appBl
 			}
 		}
 
-		appHash, err = sm.ExecCommitBlock(proxyApp.Consensus(), block, h.logger, state.LastValidators, h.stateDB)
+		appHash, err = sm.ExecCommitBlock(proxyApp.Consensus(), block, logger, state.LastValidators, h.stateDB)
 		if err != nil {
 			return nil, err
 		}
