@@ -20,7 +20,11 @@ type Metrics struct {
 	AppHashConflict metrics.Counter
 }
 
-func PrometheusMetrics(namespace string) *Metrics {
+func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
+	var labels []string
+	for i := 0; i < len(labelsAndValues); i += 2 {
+		labels = append(labels, labelsAndValues[i])
+	}
 	return &Metrics{
 		BlockProcessingTime: prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
 			Namespace: namespace,
@@ -28,27 +32,27 @@ func PrometheusMetrics(namespace string) *Metrics {
 			Name:      "block_processing_time",
 			Help:      "Time between BeginBlock and EndBlock in ms.",
 			Buckets:   stdprometheus.LinearBuckets(1, 10, 10),
-		}, []string{}),
+		}, labels).With(labelsAndValues...),
 		RecheckTime: prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "recheck_time",
 			Help:      "Time cost on recheck in ms.",
 			Buckets:   stdprometheus.LinearBuckets(1, 10, 10),
-		}, []string{}),
+		}, labels).With(labelsAndValues...),
 		AppHashConflict: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "app_hash_conflict",
 			Help:      "App hash conflict error",
-		}, []string{"proposer", "height"}),
+		}, append(labels, "proposer", "height")).With(labelsAndValues...),
 	}
 }
 
 func NopMetrics() *Metrics {
 	return &Metrics{
 		BlockProcessingTime: discard.NewHistogram(),
-		RecheckTime: 	     discard.NewHistogram(),
-		AppHashConflict:	 discard.NewCounter(),
+		RecheckTime:         discard.NewHistogram(),
+		AppHashConflict:     discard.NewCounter(),
 	}
 }

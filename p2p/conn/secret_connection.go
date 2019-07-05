@@ -29,7 +29,10 @@ const aeadSizeOverhead = 16 // overhead of poly 1305 authentication tag
 const aeadKeySize = chacha20poly1305.KeySize
 const aeadNonceSize = chacha20poly1305.NonceSize
 
-var ErrSmallOrderRemotePubKey = errors.New("detected low order point from remote peer")
+var (
+	ErrSmallOrderRemotePubKey = errors.New("detected low order point from remote peer")
+	ErrSharedSecretIsZero     = errors.New("shared secret is all zeroes")
+)
 
 // SecretConnection implements net.Conn.
 // It is an implementation of the STS protocol.
@@ -41,7 +44,6 @@ var ErrSmallOrderRemotePubKey = errors.New("detected low order point from remote
 // Otherwise they are vulnerable to MITM.
 // (TODO(ismail): see also https://github.com/tendermint/tendermint/issues/3010)
 type SecretConnection struct {
-
 	// immutable
 	recvSecret *[aeadKeySize]byte
 	sendSecret *[aeadKeySize]byte
@@ -90,7 +92,10 @@ func MakeSecretConnection(conn io.ReadWriteCloser, locPrivKey crypto.PrivKey) (*
 	locIsLeast := bytes.Equal(locEphPub[:], loEphPub[:])
 
 	// Compute common diffie hellman secret using X25519.
-	dhSecret := computeDHSecret(remEphPub, locEphPriv)
+	dhSecret, err := computeDHSecret(remEphPub, locEphPriv)
+	if err != nil {
+		return nil, err
+	}
 
 	// generate the secret used for receiving, sending, challenge via hkdf-sha2 on dhSecret
 	recvSecret, sendSecret, challenge := deriveSecretAndChallenge(dhSecret, locIsLeast)
@@ -230,9 +235,12 @@ func (sc *SecretConnection) SetWriteDeadline(t time.Time) error {
 
 func genEphKeys() (ephPub, ephPriv *[32]byte) {
 	var err error
+	// TODO: Probably not a problem but ask Tony: different from the rust implementation (uses x25519-dalek),
+	// we do not "clamp" the private key scalar:
+	// see: https://github.com/dalek-cryptography/x25519-dalek/blob/34676d336049df2bba763cc076a75e47ae1f170f/src/x25519.rs#L56-L74
 	ephPub, ephPriv, err = box.GenerateKey(crand.Reader)
 	if err != nil {
-		panic("Could not generate ephemeral keypairs")
+		panic("Could not generate ephemeral key-pair")
 	}
 	return
 }
@@ -349,9 +357,21 @@ func deriveSecretAndChallenge(dhSecret *[32]byte, locIsLeast bool) (recvSecret, 
 	return
 }
 
-func computeDHSecret(remPubKey, locPrivKey *[32]byte) (shrKey *[32]byte) {
+// computeDHSecret computes a shared secret Diffie-Hellman secret
+// from our own local private key and the other's public key.
+//
+// It returns an error if the computed shared secret is all zeroes.
+func computeDHSecret(remPubKey, locPrivKey *[32]byte) (shrKey *[32]byte, err error) {
 	shrKey = new([32]byte)
 	curve25519.ScalarMult(shrKey, locPrivKey, remPubKey)
+
+	// reject if the returned shared secret is all zeroes
+	// related to: https://github.com/tendermint/tendermint/issues/3010
+	zero := new([32]byte)
+	if subtle.ConstantTimeCompare(shrKey[:], zero[:]) == 1 {
+		return nil, ErrSharedSecretIsZero
+	}
+
 	return
 }
 

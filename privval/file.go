@@ -175,17 +175,17 @@ func (pv *FilePV) SignProposal(chainID string, proposal *types.Proposal) error {
 // returns error if HRS regression or no LastSignBytes. returns true if HRS is unchanged
 func (pv *FilePV) checkHRS(height int64, round int, step int8) (bool, error) {
 	if pv.LastHeight > height {
-		return false, errors.New("Height regression")
+		return false, fmt.Errorf("Height regression. Got %v, last height %v", height, pv.LastHeight)
 	}
 
 	if pv.LastHeight == height {
 		if pv.LastRound > round {
-			return false, errors.New("Round regression")
+			return false, fmt.Errorf("Round regression at height %v. Got %v, last round %v", height, round, pv.LastRound)
 		}
 
 		if pv.LastRound == round {
 			if pv.LastStep > step {
-				return false, errors.New("Step regression")
+				return false, fmt.Errorf("Step regression at height %v round %v. Got %v, last step %v", height, round, step, pv.LastStep)
 			} else if pv.LastStep == step {
 				if pv.LastSignBytes != nil {
 					if pv.LastSignature == nil {

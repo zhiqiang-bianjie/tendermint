@@ -167,12 +167,18 @@ func (r *PEXReactor) AddPeer(p Peer) {
 		}
 	} else {
 		// inbound peer is its own source
-		addr := p.NodeInfo().NetAddress()
+		addr, err := p.NodeInfo().NetAddress()
+		if err != nil {
+			r.Logger.Error("Failed to get peer NetAddress", "err", err, "peer", p)
+			return
+		}
+
+		// Make it explicit that addr and src are the same for an inbound peer.
 		src := addr
 
 		// add to book. dont RequestAddrs right away because
 		// we don't trust inbound as much - let ensurePeersRoutine handle it.
-		err := r.book.AddAddress(addr, src)
+		err = r.book.AddAddress(addr, src)
 		r.logErrAddrBook(err)
 	}
 }
@@ -309,7 +315,10 @@ func (r *PEXReactor) ReceiveAddrs(addrs []*p2p.NetAddress, src Peer) error {
 	}
 	r.requestsSent.Delete(id)
 
-	srcAddr := src.NodeInfo().NetAddress()
+	srcAddr, err := src.NodeInfo().NetAddress()
+	if err != nil {
+		return err
+	}
 	for _, netAddr := range addrs {
 		// Validate netAddr. Disconnect from a peer if it sends us invalid data.
 		if netAddr == nil {
@@ -471,7 +480,11 @@ func (r *PEXReactor) dialPeer(addr *p2p.NetAddress) {
 	attempts, lastDialed := r.dialAttemptsInfo(addr)
 
 	if attempts > maxAttemptsToDial {
-		r.Logger.Error("Reached max attempts to dial", "addr", addr, "attempts", attempts)
+		// Do not log the message if the addr gets readded.
+		if attempts == maxAttemptsToDial+1 {
+			r.Logger.Info("Reached max attempts to dial", "addr", addr, "attempts", attempts)
+			r.attemptsToDial.Store(addr.DialString(), _attemptsToDial{attempts + 1, time.Now()})
+		}
 		r.book.MarkBad(addr)
 		return
 	}
