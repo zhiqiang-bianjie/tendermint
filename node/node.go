@@ -554,7 +554,7 @@ func (n *Node) OnStart() error {
 	}
 
 	// Start the transport.
-	addr, err := p2p.NewNetAddressStringWithOptionalID(n.config.P2P.ListenAddress)
+	addr, err := p2p.NewNetAddressString(p2p.IDAddressString(n.nodeKey.ID(), n.config.P2P.ListenAddress))
 	if err != nil {
 		return err
 	}
@@ -572,7 +572,7 @@ func (n *Node) OnStart() error {
 
 	// Always connect to persistent peers
 	if n.config.P2P.PersistentPeers != "" {
-		err = n.sw.DialPeersAsync(n.addrBook, splitAndTrimEmpty(n.config.P2P.PersistentPeers, ",", " "), true)
+		err = n.sw.DialPeersAsync(splitAndTrimEmpty(n.config.P2P.PersistentPeers, ",", " "))
 		if err != nil {
 			return err
 		}

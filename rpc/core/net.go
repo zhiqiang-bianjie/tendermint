@@ -73,7 +73,7 @@ func UnsafeDialSeeds(seeds []string) (*ctypes.ResultDialSeeds, error) {
 	}
 	// starts go routines to dial each peer after random delays
 	logger.Info("DialSeeds", "addrBook", addrBook, "seeds", seeds)
-	err := p2pPeers.DialPeersAsync(addrBook, seeds, false)
+	err := p2pPeers.DialPeersAsync(seeds)
 	if err != nil {
 		return &ctypes.ResultDialSeeds{}, err
 	}
@@ -86,7 +86,7 @@ func UnsafeDialPeers(peers []string, persistent bool) (*ctypes.ResultDialPeers, 
 	}
 	// starts go routines to dial each peer after random delays
 	logger.Info("DialPeers", "addrBook", addrBook, "peers", peers, "persistent", persistent)
-	err := p2pPeers.DialPeersAsync(addrBook, peers, persistent)
+	err := p2pPeers.DialPeersAsync(peers)
 	if err != nil {
 		return &ctypes.ResultDialPeers{}, err
 	}
