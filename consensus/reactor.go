@@ -116,8 +116,13 @@ func (conR *ConsensusReactor) SwitchToConsensus(state sm.State, blocksSynced int
 	}
 	err := conR.conS.Start()
 	if err != nil {
-		conR.Logger.Error("Error starting conS", "err", err)
-		return
+		panic(fmt.Sprintf(`Failed to start consensus state: %v
+
+conS:
+%+v
+
+conR:
+%+v`, err, conR.conS, conR))
 	}
 }
 
@@ -438,9 +443,9 @@ func (conR *ConsensusReactor) broadcastHasVoteMessage(vote *types.Vote) {
 
 func makeRoundStepMessage(rs *cstypes.RoundState) (nrsMsg *NewRoundStepMessage) {
 	nrsMsg = &NewRoundStepMessage{
-		Height: rs.Height,
-		Round:  rs.Round,
-		Step:   rs.Step,
+		Height:                rs.Height,
+		Round:                 rs.Round,
+		Step:                  rs.Step,
 		SecondsSinceStartTime: int(time.Since(rs.StartTime).Seconds()),
 		LastCommitRound:       rs.LastCommit.Round(),
 	}
