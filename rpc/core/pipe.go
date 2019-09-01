@@ -1,6 +1,8 @@
 package core
 
 import (
+	"fmt"
+
 	"github.com/tendermint/tendermint/consensus"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/libs/log"
@@ -133,19 +135,24 @@ func SetEventBus(b *types.EventBus) {
 	eventBus = b
 }
 
-func validatePage(page, perPage, totalCount int) int {
+func validatePage(page, perPage, totalCount int) (int, error) {
 	if perPage < 1 {
-		return 1
+		panic(fmt.Sprintf("zero or negative perPage: %d", perPage))
+	}
+
+	if page == 0 {
+		return 1, nil // default
 	}
 
 	pages := ((totalCount - 1) / perPage) + 1
-	if page < 1 {
-		page = 1
-	} else if page > pages {
-		page = pages
+	if pages == 0 {
+		pages = 1 // one page (even if it's empty)
+	}
+	if page < 0 || page > pages {
+		return 1, fmt.Errorf("page should be within [0, %d] range, given %d", pages, page)
 	}
 
-	return page
+	return page, nil
 }
 
 func validatePerPage(perPage int) int {
