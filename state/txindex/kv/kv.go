@@ -2,6 +2,7 @@ package kv
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"sort"
@@ -514,10 +515,14 @@ func keyForHeight(result *types.TxResult) []byte {
 func ConvertKey2Index(key []byte) string {
 	ss := strings.Split(string(key), tagKeySeparator)
 	if len(ss) == 4 {
-		height, _ := strconv.ParseUint(ss[2], 10, 64)
+		height, _ := strconv.ParseInt(ss[2], 10, 64)
 		index, _ := strconv.ParseUint(ss[3], 10, 32)
+		indexBytes := make([]byte, 8+4)
 
-		return fmt.Sprintf("%08d%s%04d", height, tagKeySeparator, index)
+		binary.BigEndian.PutUint64(indexBytes[0:8], uint64(height))
+		binary.BigEndian.PutUint32(indexBytes[8:12], uint32(index))
+
+		return string(indexBytes)
 	}
 	return string(key)
 }
