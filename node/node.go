@@ -454,6 +454,11 @@ func NewNode(config *cfg.Config,
 
 	p2pLogger.Info("P2P Node ID", "ID", nodeKey.ID(), "file", config.NodeKeyFile())
 
+	err = sw.AddPersistentPeers(splitAndTrimEmpty(config.P2P.PersistentPeers, ",", " "))
+	if err != nil {
+		return nil, errors.Wrap(err, "could not add peers from persistent_peers field")
+	}
+
 	addrBook, err := createAddrBookAndSetOnSwitch(config, sw, p2pLogger, nodeKey)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create addrbook")
@@ -476,6 +481,12 @@ func NewNode(config *cfg.Config,
 			&pex.PEXReactorConfig{
 				Seeds:    splitAndTrimEmpty(config.P2P.Seeds, ",", " "),
 				SeedMode: config.P2P.SeedMode,
+				// See consensus/reactor.go: blocksToContributeToBecomeGoodPeer 10000
+				// blocks assuming 10s blocks ~ 28 hours.
+				// TODO (melekes): make it dynamic based on the actual block latencies
+				// from the live network.
+				// https://github.com/tendermint/tendermint/issues/3523
+				SeedDisconnectWaitPeriod: 28 * time.Hour,
 			})
 		pexReactor.SetLogger(logger.With("module", "pex"))
 		sw.AddReactor("PEX", pexReactor)
@@ -578,7 +589,7 @@ func (n *Node) OnStart() error {
 	}
 
 	// Start the transport.
-	addr, err := p2p.NewNetAddressStringWithOptionalID(n.config.P2P.ListenAddress)
+	addr, err := p2p.NewNetAddressString(p2p.IDAddressString(n.nodeKey.ID(), n.config.P2P.ListenAddress))
 	if err != nil {
 		return err
 	}
@@ -595,12 +606,8 @@ func (n *Node) OnStart() error {
 	}
 
 	// Always connect to persistent peers
-	if n.config.P2P.PersistentPeers != "" {
-		err = n.sw.DialPeersAsync(n.addrBook, splitAndTrimEmpty(n.config.P2P.PersistentPeers, ",", " "), true)
-		if err != nil {
-			return err
-		}
-	}
+	// parsing errors are handled above by AddPersistentPeers
+	_ = n.sw.DialPeersAsync(splitAndTrimEmpty(n.config.P2P.PersistentPeers, ",", " "))
 
 	return nil
 }
