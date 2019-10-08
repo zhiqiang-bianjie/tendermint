@@ -41,6 +41,11 @@ func NewBlockStore(db dbm.DB) *BlockStore {
 	}
 }
 
+func (bs *BlockStore) WithHeight(height int64) *BlockStore {
+	bs.height = height
+	return bs
+}
+
 // Height returns the last known contiguous block height.
 func (bs *BlockStore) Height() int64 {
 	bs.mtx.RLock()
